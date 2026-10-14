@@ -14,6 +14,10 @@
   Enviar = menu Compartir del celular). No guarda nada en ningun servidor:
   el respaldo queda en el WhatsApp de quien la recibe.
   Necesita https (GitHub Pages) para usar el GPS y el boton Compartir.
+  GUARDADO EN GOOGLE (14-10-2026, 16:00): si URL_GUARDAR tiene la direccion
+  del receptor (Apps Script, archivo google/Codigo.gs), cada respaldo se
+  guarda ademas en Drive (foto) y en una planilla (fila). Primero queda en una
+  cola dentro del celular: si no hay senal se sube solo cuando vuelve.
   Opcional en el link: ?wa=56912345678 -> numero del encargado para el plan B
   (cuando el celular no deja compartir la foto directo).
 -->
@@ -99,6 +103,10 @@
   #btnEnviar:disabled { background: var(--line); color: var(--muted); }
   #btnEnviar svg { width: 24px; height: 24px; }
   .falta { font-size: 13.5px; color: var(--muted); text-align: center; margin: 6px 0 0; }
+  .nube { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 10px; font-size: 14.5px; }
+  .nube.ok { background: var(--ok-bg); color: var(--ok); }
+  .nube.pend { background: var(--warn-bg); color: var(--warn); }
+  .nube.pend button { margin-left: auto; padding: 6px 12px; border-radius: 999px; border: 1px solid currentColor; background: transparent; color: inherit; font: 600 13px var(--font); }
   .ok-box { text-align: center; }
   .ok-box h2 { margin: 6px 0; color: var(--ok); }
   .ok-box p { color: var(--muted); margin: 0 0 12px; }
@@ -120,6 +128,7 @@
 </div></header>
 
 <main id="form">
+  <div class="nube pend" id="pendBar" hidden><span id="pendTxt"></span><button type="button" id="pendBtn">Subir ahora</button></div>
   <section>
     <div class="paso"><b>1</b> Orden de trabajo</div>
     <label class="l" for="ot">Número de OT (como sale en TOA)</label>
@@ -184,6 +193,7 @@
     <svg viewBox="0 0 24 24" width="54" height="54" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--ok)"><circle cx="12" cy="12" r="10"/><path d="m7 12 3.5 3.5L17 9"/></svg>
     <h2 id="listoTit">Respaldo listo</h2>
     <p id="listoTxt">Revisa en WhatsApp que el mensaje haya salido.</p>
+    <div class="nube" id="nubeListo" hidden style="margin:0 0 12px"></div>
     <div class="planb" id="planB" hidden>
       <ol>
         <li>Toca <b>Guardar foto</b>.</li>
@@ -218,6 +228,12 @@
   const LADO_MAX = 1600;            // la foto se achica a este lado mayor para que pese poco
   const st = { causa: null, llamo: '', img: null, fotoHora: null, fotoVieja: false, pos: null, blob: null, texto: '' };
   const wa = (new URLSearchParams(location.search).get('wa') || '').replace(/\D/g, '');
+
+  /* ---- guardado en Google ---- */
+  const URL_GUARDAR = 'https://script.google.com/macros/s/AKfycbyRceaPgxD-dQsuH7CSl9SsJXcq-s2ELrczVdZtGykH2Cu-MfiEAvT0lWlQCnLuW68z/exec';            // direccion del receptor (termina en /exec). Vacia = solo WhatsApp
+  const CLAVE = 'dominion-zc-2026';   // la misma de Codigo.gs
+  const VERSION = '2026-10-14';
+  let ultimoId = null;
 
   /* ---- tecnico (se guarda en el celular) ---- */
   function leerTec(){ try { return localStorage.getItem('rt_tecnico') || ''; } catch(e){ return ''; } }
@@ -349,6 +365,71 @@
       + (p ? 'Ubicación (±' + p.acc + ' m): https://maps.google.com/?q=' + p.lat.toFixed(6) + ',' + p.lng.toFixed(6) : 'Ubicación: no disponible');
   }
 
+  /* ---- cola en el celular (IndexedDB) y subida a Google ---- */
+  let dbP = null;
+  function db(){
+    if(!dbP) dbP = new Promise(function(ok, mal){
+      const r = indexedDB.open('respaldo-terreno', 1);
+      r.onupgradeneeded = function(){ r.result.createObjectStore('cola', { keyPath: 'id' }); };
+      r.onsuccess = function(){ ok(r.result); }; r.onerror = function(){ mal(r.error); };
+    });
+    return dbP;
+  }
+  function tx(modo, fn){
+    return db().then(function(d){ return new Promise(function(ok, mal){
+      const t = d.transaction('cola', modo), out = fn(t.objectStore('cola'));
+      t.oncomplete = function(){ ok(out && out.result); }; t.onerror = function(){ mal(t.error); };
+    }); });
+  }
+  function colaPoner(r){ return tx('readwrite', function(s){ s.put(r); }); }
+  function colaBorrar(id){ return tx('readwrite', function(s){ s.delete(id); }); }
+  function colaTodos(){ return tx('readonly', function(s){ return s.getAll(); }); }
+  function nuevoId(){
+    try { if(crypto.randomUUID) return crypto.randomUUID(); } catch(e){}
+    return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+  }
+  function aBase64(blob){
+    return new Promise(function(ok, mal){ const f = new FileReader(); f.onload = function(){ ok(f.result); }; f.onerror = mal; f.readAsDataURL(blob); });
+  }
+  let subiendo = false;
+  async function sincronizar(){
+    if(!URL_GUARDAR || subiendo) return pintarPend();
+    subiendo = true;
+    try {
+      const cola = (await colaTodos()) || [];
+      for(const r of cola){
+        if(!navigator.onLine) break;
+        try {
+          const resp = await fetch(URL_GUARDAR, { method: 'POST', body: JSON.stringify(r), redirect: 'follow' });
+          const j = await resp.json();
+          if(j && j.ok) await colaBorrar(r.id);
+          else if(j && j.error === 'clave') break;
+        } catch(e){ break; }   // sin senal o Google no respondio: se reintenta despues
+      }
+    } catch(e){}
+    subiendo = false;
+    return pintarPend();
+  }
+  async function pintarPend(){
+    if(!URL_GUARDAR){ $('pendBar').hidden = true; return; }
+    let cola = [];
+    try { cola = (await colaTodos()) || []; } catch(e){}
+    const n = cola.length;
+    $('pendBar').hidden = n === 0;
+    $('pendTxt').textContent = n === 1 ? '1 respaldo guardado en el celular, falta subirlo' : n + ' respaldos guardados en el celular, falta subirlos';
+    const nl = $('nubeListo');
+    if(ultimoId){
+      const pend = cola.some(function(r){ return r.id === ultimoId; });
+      nl.hidden = false;
+      nl.className = 'nube ' + (pend ? 'pend' : 'ok');
+      nl.textContent = pend ? 'Guardado en el celular. Se sube solo cuando haya señal.' : '✓ Guardado en la carpeta de respaldos';
+    }
+  }
+  $('pendBtn').addEventListener('click', sincronizar);
+  window.addEventListener('online', sincronizar);
+  setInterval(sincronizar, 60000);
+  sincronizar();
+
   /* ---- que falta / enviar ---- */
   function faltan(){
     const f = [];
@@ -370,35 +451,54 @@
   async function enviar(){
     estampar();                               // hora y GPS al momento de enviar
     await new Promise(function(r){ const t = setInterval(function(){ if(st.blob){ clearInterval(t); r(); } }, 50); });
+    if(URL_GUARDAR){
+      try {
+        const p = st.pos;
+        const r = { id: nuevoId(), clave: CLAVE, version: VERSION, fecha: new Date().toISOString(),
+          tecnico: tecnico, ot: otLimpia(), causa: st.causa, detalle: detalle(), comentario: $('obs').value.trim(),
+          lat: p ? p.lat : null, lng: p ? p.lng : null, acc: p ? p.acc : null,
+          fotoVieja: st.fotoVieja, fotoHora: st.fotoVieja ? hora(st.fotoHora) : '', foto: await aBase64(st.blob) };
+        await colaPoner(r); ultimoId = r.id;
+      } catch(e){ ultimoId = null; }
+    }
     const file = new File([st.blob], nombreArchivo(), { type: 'image/jpeg' });
     const data = { files: [file], text: st.texto, title: 'Respaldo OT ' + otLimpia() };
     if(navigator.canShare && navigator.canShare({ files: [file] })){
-      try { await navigator.share(data); mostrarListo(false); return; }
-      catch(e){ if(e && e.name === 'AbortError') return; }
+      try { await navigator.share(data); mostrarListo(false); sincronizar(); return; }
+      catch(e){ if(e && e.name === 'AbortError'){ if(ultimoId){ mostrarListo(false, true); sincronizar(); } return; } }
     }
-    mostrarListo(true);
+    mostrarListo(true); sincronizar();
   }
   $('btnEnviar').addEventListener('click', enviar);
 
-  function mostrarListo(planB){
+  function mostrarListo(planB, sinWsp){
     $('form').hidden = true; $('listo').hidden = false; window.scrollTo(0, 0);
     $('planB').hidden = !planB;
-    $('listoTit').textContent = planB ? 'Envíalo en 2 pasos' : 'Respaldo enviado';
-    $('listoTxt').textContent = planB ? 'Este celular no deja mandar la foto directo.' : 'Revisa en WhatsApp que el mensaje haya salido.';
+    $('listoTit').textContent = planB ? 'Envíalo en 2 pasos' : sinWsp ? 'Respaldo guardado' : 'Respaldo enviado';
+    $('listoTxt').textContent = planB ? 'Este celular no deja mandar la foto directo.' : sinWsp ? 'No se mandó por WhatsApp. Toca "Enviar de nuevo" si quieres mandarlo.' : 'Revisa en WhatsApp que el mensaje haya salido.';
+    $('nubeListo').hidden = true; pintarPend();
     $('btnWa').href = (wa ? 'https://wa.me/' + wa : 'https://wa.me/') + '?text=' + encodeURIComponent(st.texto);
   }
   $('btnGuardar').addEventListener('click', function(){
     const a = document.createElement('a'); a.href = URL.createObjectURL(st.blob); a.download = nombreArchivo();
     document.body.appendChild(a); a.click(); a.remove();
   });
-  $('btnReenviar').addEventListener('click', function(){ $('listo').hidden = true; $('form').hidden = false; enviar(); });
+  $('btnReenviar').addEventListener('click', async function(){
+    /* reenviar solo por WhatsApp: el respaldo ya quedo guardado una vez */
+    const file = new File([st.blob], nombreArchivo(), { type: 'image/jpeg' });
+    if(navigator.canShare && navigator.canShare({ files: [file] })){
+      try { await navigator.share({ files: [file], text: st.texto }); mostrarListo(false); return; } catch(e){ if(e && e.name === 'AbortError') return; }
+    }
+    mostrarListo(true);
+  });
   $('btnNuevo').addEventListener('click', function(){
     st.causa = null; st.llamo = ''; st.img = null; st.blob = null; st.fotoVieja = false;
     $('ot').value = '1-'; $('obs').value = ''; $('reFecha').value = ''; $('reFranja').value = ''; $('deMotivo').value = '';
     document.querySelectorAll('[aria-pressed=true]').forEach(function(b){ b.setAttribute('aria-pressed', 'false'); });
     ['exSM', 'exRE', 'exDE'].forEach(function(id){ $(id).hidden = true; });
     $('prev').hidden = true; $('fotoVieja').hidden = true; $('fotoTxt').textContent = 'Tomar foto';
-    $('listo').hidden = true; $('form').hidden = false; window.scrollTo(0, 0); revisar();
+    ultimoId = null;
+    $('listo').hidden = true; $('form').hidden = false; window.scrollTo(0, 0); revisar(); pintarPend();
   });
   revisar();
 })();
