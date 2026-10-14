@@ -1,0 +1,407 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0f2a4a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Respaldo en terreno</title>
+<!--
+  RESPALDO EN TERRENO (14-10-2026) — app para tecnicos Dominion.
+  El tecnico registra una visita no realizada (Sin moradores, Cliente reagenda,
+  Cliente desiste) con foto de la casa. La app estampa SOBRE la foto la causa,
+  la OT, el tecnico, la fecha/hora y el GPS, y la envia por WhatsApp (boton
+  Enviar = menu Compartir del celular). No guarda nada en ningun servidor:
+  el respaldo queda en el WhatsApp de quien la recibe.
+  Necesita https (GitHub Pages) para usar el GPS y el boton Compartir.
+  Opcional en el link: ?wa=56912345678 -> numero del encargado para el plan B
+  (cuando el celular no deja compartir la foto directo).
+-->
+<style>
+  /* Una sola columna pensada para el celular, botones grandes para usar con el
+     sol encima y con una mano. */
+  :root {
+    --bg: #eef2f6; --card: #ffffff; --fg: #0f1d2e; --muted: #5b6b7d; --line: #d5dee8;
+    --brand: #0f2a4a; --accent: #1d4ed8;
+    --sm: #b45309; --sm-bg: #fff4e5;      /* sin moradores */
+    --re: #1d4ed8; --re-bg: #e8f0fe;      /* cliente reagenda */
+    --de: #b91c1c; --de-bg: #fde8e8;      /* cliente desiste */
+    --ok: #15803d; --ok-bg: #e7f6ec; --warn: #b45309; --warn-bg: #fff4e5;
+    --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0b1420; --card: #132131; --fg: #e8eef5; --muted: #9db0c3; --line: #263a50;
+      --brand: #0a1d33; --accent: #6ea0ff;
+      --sm: #f5a524; --sm-bg: #33240d; --re: #8fb3ff; --re-bg: #142a4d; --de: #ff8a8a; --de-bg: #3a1616;
+      --ok: #4ade80; --ok-bg: #12301d; --warn: #f5a524; --warn-bg: #33240d; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0b1420; --card: #132131; --fg: #e8eef5; --muted: #9db0c3; --line: #263a50;
+    --brand: #0a1d33; --accent: #6ea0ff;
+    --sm: #f5a524; --sm-bg: #33240d; --re: #8fb3ff; --re-bg: #142a4d; --de: #ff8a8a; --de-bg: #3a1616;
+    --ok: #4ade80; --ok-bg: #12301d; --warn: #f5a524; --warn-bg: #33240d; color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { margin: 0; }
+  body { background: var(--bg); color: var(--fg); font: 16px/1.4 var(--font); -webkit-text-size-adjust: 100%; }
+  header { background: var(--brand); color: #fff; padding-top: env(safe-area-inset-top, 0px); }
+  header .in { max-width: 560px; margin: 0 auto; padding-block: 14px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+    display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  header h1 { margin: 0; font-size: 19px; letter-spacing: .01em; }
+  header small { display: block; opacity: .75; font-size: 12.5px; font-weight: 400; }
+  header button { background: rgba(255,255,255,.12); color: #fff; border: 1px solid rgba(255,255,255,.3);
+    border-radius: 999px; padding: 7px 12px; font: 600 13px var(--font); max-width: 52%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  main { max-width: 560px; margin: 0 auto; padding-block: 14px 40px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+    display: flex; flex-direction: column; gap: 12px; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px; }
+  .paso { display: flex; align-items: baseline; gap: 8px; margin: 0 0 10px; font-size: 13px; font-weight: 700;
+    letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  .paso b { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%;
+    background: var(--brand); color: #fff; font-size: 12px; letter-spacing: 0; }
+  label.l { display: block; font-size: 14px; color: var(--muted); margin: 0 0 6px; }
+  input[type=text], input[type=date], select, textarea {
+    width: 100%; font: 18px var(--font); padding: 12px; border: 1.5px solid var(--line); border-radius: 10px;
+    background: var(--bg); color: var(--fg); }
+  input#ot { font-size: 22px; font-weight: 700; letter-spacing: .04em; font-variant-numeric: tabular-nums; text-transform: uppercase; }
+  input:focus, select:focus, textarea:focus, button:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; }
+  textarea { min-height: 70px; resize: vertical; font-size: 16px; }
+  .err { color: var(--de); font-size: 14px; margin: 6px 0 0; }
+  .causas { display: grid; gap: 8px; }
+  .causas button { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
+    padding: 14px; border-radius: 12px; border: 2px solid var(--line); background: var(--card); color: var(--fg); font: 700 18px var(--font); }
+  .causas button i { width: 14px; height: 14px; border-radius: 50%; flex: none; font-style: normal; }
+  .causas button small { display: block; font-weight: 400; font-size: 13px; color: var(--muted); }
+  .causas button[data-c=SM] i { background: var(--sm); } .causas button[data-c=SM][aria-pressed=true] { border-color: var(--sm); background: var(--sm-bg); }
+  .causas button[data-c=RE] i { background: var(--re); } .causas button[data-c=RE][aria-pressed=true] { border-color: var(--re); background: var(--re-bg); }
+  .causas button[data-c=DE] i { background: var(--de); } .causas button[data-c=DE][aria-pressed=true] { border-color: var(--de); background: var(--de-bg); }
+  .extra { display: grid; gap: 10px; margin-top: 12px; }
+  .si-no { display: flex; gap: 8px; }
+  .si-no button { flex: 1; padding: 12px; border-radius: 10px; border: 2px solid var(--line); background: var(--card); color: var(--fg); font: 600 16px var(--font); }
+  .si-no button[aria-pressed=true] { border-color: var(--accent); background: var(--re-bg); }
+  .foto-btn { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; padding: 18px; border-radius: 12px;
+    border: 2px dashed var(--accent); background: var(--re-bg); color: var(--accent); font: 700 18px var(--font); cursor: pointer; }
+  .foto-btn svg { width: 26px; height: 26px; }
+  #fotoIn { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+  #prev { display: block; width: 100%; border-radius: 10px; margin-top: 10px; background: #000; }
+  .estado { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; font-size: 15px; }
+  .estado.ok { background: var(--ok-bg); color: var(--ok); }
+  .estado.warn { background: var(--warn-bg); color: var(--warn); }
+  .estado.busca { background: var(--bg); color: var(--muted); }
+  .estado button { margin-left: auto; padding: 6px 12px; border-radius: 999px; border: 1px solid currentColor; background: transparent; color: inherit; font: 600 13px var(--font); }
+  .enviar { position: sticky; bottom: 0; padding-block: 10px calc(10px + env(safe-area-inset-bottom, 0px)); background: linear-gradient(transparent, var(--bg) 30%); }
+  #btnEnviar { width: 100%; padding: 18px; border: 0; border-radius: 14px; background: #1f8f4e; color: #fff; font: 800 20px var(--font);
+    display: flex; align-items: center; justify-content: center; gap: 10px; }
+  #btnEnviar:disabled { background: var(--line); color: var(--muted); }
+  #btnEnviar svg { width: 24px; height: 24px; }
+  .falta { font-size: 13.5px; color: var(--muted); text-align: center; margin: 6px 0 0; }
+  .ok-box { text-align: center; }
+  .ok-box h2 { margin: 6px 0; color: var(--ok); }
+  .ok-box p { color: var(--muted); margin: 0 0 12px; }
+  .btn2 { width: 100%; padding: 14px; border-radius: 12px; border: 2px solid var(--line); background: var(--card); color: var(--fg); font: 700 17px var(--font); }
+  .btn2.pri { background: var(--brand); color: #fff; border-color: var(--brand); }
+  .planb { display: grid; gap: 8px; text-align: left; }
+  .planb ol { margin: 0; padding-left: 20px; color: var(--fg); }
+  .nota { font-size: 12.5px; color: var(--muted); text-align: center; margin: 4px 0 0; }
+  #dlgTec { position: fixed; inset: 0; background: rgba(5,12,22,.6); display: grid; place-items: center; padding: 16px; z-index: 10; }
+  #dlgTec .box { background: var(--card); border-radius: 16px; padding: 18px; width: min(420px, 100%); display: grid; gap: 10px; }
+  #dlgTec h2 { margin: 0; font-size: 19px; }
+  #dlgTec p { margin: 0; color: var(--muted); font-size: 14px; }
+</style>
+</head>
+<body>
+<header><div class="in">
+  <h1>Respaldo en terreno<small>Dominion · visita no realizada</small></h1>
+  <button id="btnTec" type="button" title="Cambiar técnico">Técnico</button>
+</div></header>
+
+<main id="form">
+  <section>
+    <div class="paso"><b>1</b> Orden de trabajo</div>
+    <label class="l" for="ot">Número de OT (como sale en TOA)</label>
+    <input id="ot" type="text" inputmode="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="1-3O4FLVIU" value="1-">
+    <p class="err" id="otErr" hidden>Revisa la OT: debe ser como 1-3O4FLVIU.</p>
+  </section>
+
+  <section>
+    <div class="paso"><b>2</b> Qué pasó</div>
+    <div class="causas" id="causas">
+      <button type="button" data-c="SM" aria-pressed="false"><i></i><span>Sin moradores<small>No hay nadie en la casa</small></span></button>
+      <button type="button" data-c="RE" aria-pressed="false"><i></i><span>Cliente reagenda<small>Pide otro día u hora</small></span></button>
+      <button type="button" data-c="DE" aria-pressed="false"><i></i><span>Cliente desiste<small>Ya no quiere el trabajo</small></span></button>
+    </div>
+    <div class="extra" id="exSM" hidden>
+      <span class="l">¿Llamaste al cliente?</span>
+      <div class="si-no" id="llamo">
+        <button type="button" data-v="Llamó, no contesta" aria-pressed="false">Sí, no contesta</button>
+        <button type="button" data-v="Sin teléfono / no se pudo llamar" aria-pressed="false">No se pudo</button>
+      </div>
+    </div>
+    <div class="extra" id="exRE" hidden>
+      <div><label class="l" for="reFecha">Nueva fecha que pidió</label><input id="reFecha" type="date"></div>
+      <div><label class="l" for="reFranja">Franja</label>
+        <select id="reFranja"><option value="">Sin franja</option><option>10-13</option><option>13-16</option><option>16-19</option></select></div>
+    </div>
+    <div class="extra" id="exDE" hidden>
+      <div><label class="l" for="deMotivo">Motivo</label>
+        <select id="deMotivo"><option value="">Elige un motivo</option><option>No quiere el servicio</option><option>Ya tiene otro proveedor</option><option>Por el precio</option><option>No pidió el trabajo</option><option>Otro</option></select></div>
+    </div>
+    <div class="extra"><div><label class="l" for="obs">Comentario (opcional)</label><textarea id="obs" maxlength="200" placeholder="Ej: casa con reja cerrada, se tocó timbre 3 veces"></textarea></div></div>
+  </section>
+
+  <section>
+    <div class="paso"><b>3</b> Foto de la casa</div>
+    <label class="foto-btn" for="fotoIn" id="fotoLbl">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8a2 2 0 0 1 2-2h2l2-2h6l2 2h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="4"/></svg>
+      <span id="fotoTxt">Tomar foto</span>
+    </label>
+    <input id="fotoIn" type="file" accept="image/*" capture="environment">
+    <p class="nota">Fachada y número de la casa. Que no salgan personas.</p>
+    <canvas id="prev" hidden></canvas>
+    <div class="estado warn" id="fotoVieja" hidden style="margin-top:10px">⚠ Esta foto no es de recién. Saca una nueva en el lugar.</div>
+  </section>
+
+  <section>
+    <div class="paso"><b>4</b> Ubicación</div>
+    <div class="estado busca" id="gps"><span id="gpsTxt">Buscando ubicación…</span><button type="button" id="gpsBtn" hidden>Reintentar</button></div>
+  </section>
+
+  <div class="enviar">
+    <button id="btnEnviar" type="button" disabled>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg>
+      Enviar respaldo
+    </button>
+    <p class="falta" id="falta">Falta: OT, qué pasó y foto</p>
+  </div>
+</main>
+
+<main id="listo" hidden>
+  <section class="ok-box">
+    <svg viewBox="0 0 24 24" width="54" height="54" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--ok)"><circle cx="12" cy="12" r="10"/><path d="m7 12 3.5 3.5L17 9"/></svg>
+    <h2 id="listoTit">Respaldo listo</h2>
+    <p id="listoTxt">Revisa en WhatsApp que el mensaje haya salido.</p>
+    <div class="planb" id="planB" hidden>
+      <ol>
+        <li>Toca <b>Guardar foto</b>.</li>
+        <li>Toca <b>Abrir WhatsApp</b> y envía la foto guardada con el texto.</li>
+      </ol>
+      <button class="btn2" type="button" id="btnGuardar">Guardar foto</button>
+      <a class="btn2" id="btnWa" href="#" target="_blank" rel="noopener" style="display:block;text-align:center;text-decoration:none">Abrir WhatsApp</a>
+    </div>
+    <div style="display:grid;gap:8px;margin-top:12px">
+      <button class="btn2" type="button" id="btnReenviar">Enviar de nuevo</button>
+      <button class="btn2 pri" type="button" id="btnNuevo">Nuevo respaldo</button>
+    </div>
+  </section>
+</main>
+
+<div id="dlgTec" hidden>
+  <div class="box">
+    <h2>¿Quién eres?</h2>
+    <p>Tu nombre sale en cada foto. Se guarda en este celular, se escribe una sola vez.</p>
+    <input id="tecIn" type="text" autocomplete="name" placeholder="Nombre y apellido">
+    <button class="btn2 pri" type="button" id="tecOk">Guardar</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+  const $ = function(id){ return document.getElementById(id); };
+  const CAUSAS = { SM: 'SIN MORADORES', RE: 'CLIENTE REAGENDA', DE: 'CLIENTE DESISTE' };
+  const COLOR = { SM: '#d97706', RE: '#2563eb', DE: '#dc2626' };
+  const FOTO_MAX_MIN = 15;          // una foto mas vieja que esto se marca como "no es de recien"
+  const LADO_MAX = 1600;            // la foto se achica a este lado mayor para que pese poco
+  const st = { causa: null, llamo: '', img: null, fotoHora: null, fotoVieja: false, pos: null, blob: null, texto: '' };
+  const wa = (new URLSearchParams(location.search).get('wa') || '').replace(/\D/g, '');
+
+  /* ---- tecnico (se guarda en el celular) ---- */
+  function leerTec(){ try { return localStorage.getItem('rt_tecnico') || ''; } catch(e){ return ''; } }
+  function guardarTec(v){ try { localStorage.setItem('rt_tecnico', v); } catch(e){} }
+  let tecnico = leerTec();
+  function pintarTec(){ $('btnTec').textContent = tecnico || 'Técnico'; }
+  function pedirTec(){ $('tecIn').value = tecnico; $('dlgTec').hidden = false; setTimeout(function(){ $('tecIn').focus(); }, 50); }
+  $('btnTec').addEventListener('click', pedirTec);
+  $('tecOk').addEventListener('click', function(){
+    const v = $('tecIn').value.trim().replace(/\s+/g, ' ');
+    if(v.length < 3){ $('tecIn').focus(); return; }
+    tecnico = v; guardarTec(v); pintarTec(); $('dlgTec').hidden = true; revisar();
+  });
+  pintarTec(); if(!tecnico) pedirTec();
+
+  /* ---- OT ---- */
+  function otLimpia(){ return $('ot').value.toUpperCase().replace(/\s/g, ''); }
+  function otOk(){ return /^1-[0-9A-Z]{6,10}$/.test(otLimpia()); }
+  $('ot').addEventListener('input', function(){ $('otErr').hidden = true; revisar(); });
+  $('ot').addEventListener('blur', function(){ const v = otLimpia(); $('ot').value = v; if(v.length > 2 && !otOk()) $('otErr').hidden = false; });
+
+  /* ---- causa ---- */
+  $('causas').addEventListener('click', function(e){
+    const b = e.target.closest('button'); if(!b) return;
+    st.causa = b.dataset.c;
+    Array.prototype.forEach.call($('causas').children, function(x){ x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
+    $('exSM').hidden = st.causa !== 'SM'; $('exRE').hidden = st.causa !== 'RE'; $('exDE').hidden = st.causa !== 'DE';
+    if(st.img) estampar(); revisar();
+  });
+  $('llamo').addEventListener('click', function(e){
+    const b = e.target.closest('button'); if(!b) return;
+    st.llamo = b.dataset.v;
+    Array.prototype.forEach.call($('llamo').children, function(x){ x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
+    if(st.img) estampar();
+  });
+  ['reFecha', 'reFranja', 'deMotivo', 'obs'].forEach(function(id){ $(id).addEventListener('change', function(){ if(st.img) estampar(); revisar(); }); });
+
+  /* ---- GPS ---- */
+  let gpsWatch = null;
+  function gpsPintar(clase, txt, reintentar){
+    $('gps').className = 'estado ' + clase; $('gpsTxt').textContent = txt; $('gpsBtn').hidden = !reintentar;
+  }
+  function gpsIniciar(){
+    if(!('geolocation' in navigator)){ gpsPintar('warn', 'Este celular no entrega ubicación.', false); return; }
+    gpsPintar('busca', 'Buscando ubicación…', false);
+    if(gpsWatch !== null) navigator.geolocation.clearWatch(gpsWatch);
+    gpsWatch = navigator.geolocation.watchPosition(function(p){
+      const c = p.coords;
+      if(!st.pos || c.accuracy <= st.pos.acc || Date.now() - st.pos.t > 60000)
+        st.pos = { lat: c.latitude, lng: c.longitude, acc: Math.round(c.accuracy), t: Date.now() };
+      gpsPintar(st.pos.acc <= 50 ? 'ok' : 'warn', (st.pos.acc <= 50 ? '✓ Ubicación lista' : 'Ubicación poco precisa') + ' · ±' + st.pos.acc + ' m', st.pos.acc > 50);
+      if(st.img) estampar(); revisar();
+    }, function(err){
+      gpsPintar('warn', err.code === 1 ? 'Sin permiso de ubicación. Actívalo para este sitio y reintenta.' : 'No se pudo obtener la ubicación. Sal al exterior y reintenta.', true);
+      revisar();
+    }, { enableHighAccuracy: true, maximumAge: 15000, timeout: 30000 });
+  }
+  $('gpsBtn').addEventListener('click', gpsIniciar);
+  gpsIniciar();
+
+  /* ---- foto ---- */
+  $('fotoIn').addEventListener('change', function(){
+    const f = this.files && this.files[0]; if(!f) return;
+    const ahora = Date.now();
+    st.fotoHora = f.lastModified ? new Date(f.lastModified) : new Date(ahora);
+    st.fotoVieja = f.lastModified ? (ahora - f.lastModified) > FOTO_MAX_MIN * 60000 : false;
+    $('fotoVieja').hidden = !st.fotoVieja;
+    const url = URL.createObjectURL(f), im = new Image();
+    im.onload = function(){ st.img = im; $('fotoTxt').textContent = 'Cambiar foto'; estampar(); revisar(); };
+    im.onerror = function(){ URL.revokeObjectURL(url); $('fotoTxt').textContent = 'No se pudo leer la foto, toma otra'; };
+    im.src = url;
+    this.value = '';
+  });
+
+  function dosD(n){ return String(n).padStart(2, '0'); }
+  function fecha(d){ return dosD(d.getDate()) + '-' + dosD(d.getMonth() + 1) + '-' + d.getFullYear(); }
+  function hora(d){ return dosD(d.getHours()) + ':' + dosD(d.getMinutes()); }
+  function detalle(){
+    if(st.causa === 'SM') return st.llamo;
+    if(st.causa === 'RE'){ const f = $('reFecha').value, fr = $('reFranja').value;
+      return f ? 'Nueva fecha ' + f.split('-').reverse().join('-') + (fr ? ' ' + fr : '') : (fr ? 'Franja ' + fr : ''); }
+    if(st.causa === 'DE') return $('deMotivo').value;
+    return '';
+  }
+
+  /* dibuja la foto y le pega la franja con los datos */
+  function estampar(){
+    const im = st.img, cv = $('prev');
+    const k = Math.min(1, LADO_MAX / Math.max(im.naturalWidth, im.naturalHeight));
+    const W = Math.round(im.naturalWidth * k), H = Math.round(im.naturalHeight * k);
+    cv.width = W; cv.height = H;
+    const g = cv.getContext('2d');
+    g.drawImage(im, 0, 0, W, H);
+    const u = Math.max(W, H) / 1000;           // unidad de tamano
+    const fs = Math.round(26 * u), fsG = Math.round(36 * u), pad = Math.round(18 * u), lh = Math.round(fs * 1.35);
+    const ahora = new Date(), p = st.pos, det = detalle(), obs = $('obs').value.trim();
+    const lineas = [];
+    lineas.push('OT ' + (otOk() ? otLimpia() : '—') + '   ·   ' + (tecnico || 'Técnico sin nombre'));
+    lineas.push(fecha(ahora) + ' ' + hora(ahora) + (st.fotoVieja ? '   ·   ⚠ foto de las ' + hora(st.fotoHora) : ''));
+    lineas.push(p ? 'GPS ' + p.lat.toFixed(6) + ', ' + p.lng.toFixed(6) + '  (±' + p.acc + ' m)' : 'GPS sin ubicación');
+    if(det) lineas.push(det);
+    if(obs) lineas.push(obs.length > 80 ? obs.slice(0, 78) + '…' : obs);
+    const altoBanda = pad * 2 + fsG * 1.25 + lineas.length * lh;
+    g.fillStyle = 'rgba(8,15,26,.78)'; g.fillRect(0, H - altoBanda, W, altoBanda);
+    g.fillStyle = st.causa ? COLOR[st.causa] : '#64748b'; g.fillRect(0, H - altoBanda, Math.round(10 * u), altoBanda);
+    g.textBaseline = 'top';
+    let y = H - altoBanda + pad;
+    g.font = '800 ' + fsG + 'px system-ui, -apple-system, Roboto, Arial, sans-serif';
+    g.fillStyle = '#ffffff'; g.fillText(st.causa ? CAUSAS[st.causa] : 'ELIGE QUÉ PASÓ', pad + 10 * u, y);
+    g.font = '600 ' + Math.round(fs * .8) + 'px system-ui, -apple-system, Roboto, Arial, sans-serif'; g.fillStyle = 'rgba(255,255,255,.7)';
+    const marca = 'Dominion · respaldo de visita';
+    g.fillText(marca, W - pad - g.measureText(marca).width, y + (fsG - fs * .8) / 2);
+    y += fsG * 1.25;
+    g.font = '500 ' + fs + 'px system-ui, -apple-system, Roboto, Arial, sans-serif'; g.fillStyle = '#ffffff';
+    lineas.forEach(function(t){ g.fillText(t, pad + 10 * u, y, W - pad * 2 - 10 * u); y += lh; });
+    cv.hidden = false;
+    st.texto = textoMensaje(ahora);
+    st.blob = null;
+    cv.toBlob(function(b){ st.blob = b; revisar(); }, 'image/jpeg', 0.82);
+  }
+
+  function textoMensaje(ahora){
+    const p = st.pos, det = detalle(), obs = $('obs').value.trim();
+    return '*' + (st.causa ? CAUSAS[st.causa] : '') + '* · OT ' + otLimpia() + '\n'
+      + 'Técnico: ' + (tecnico || '—') + '\n'
+      + 'Fecha: ' + fecha(ahora) + ' ' + hora(ahora) + (st.fotoVieja ? ' (foto de las ' + hora(st.fotoHora) + ')' : '') + '\n'
+      + (det ? det + '\n' : '')
+      + (obs ? 'Comentario: ' + obs + '\n' : '')
+      + (p ? 'Ubicación (±' + p.acc + ' m): https://maps.google.com/?q=' + p.lat.toFixed(6) + ',' + p.lng.toFixed(6) : 'Ubicación: no disponible');
+  }
+
+  /* ---- que falta / enviar ---- */
+  function faltan(){
+    const f = [];
+    if(!tecnico) f.push('tu nombre');
+    if(!otOk()) f.push('OT');
+    if(!st.causa) f.push('qué pasó');
+    else if(st.causa === 'DE' && !$('deMotivo').value) f.push('motivo');
+    if(!st.img) f.push('foto');
+    return f;
+  }
+  function revisar(){
+    const f = faltan();
+    /* no se desactiva mientras se arma la foto: enviar() espera a que este lista
+       (si no, tocar Enviar justo despues de escribir el comentario no hacia nada) */
+    $('btnEnviar').disabled = f.length > 0;
+    $('falta').textContent = f.length ? 'Falta: ' + f.join(', ') : (!st.pos ? 'Sin ubicación todavía: se enviará sin GPS si no aparece.' : 'Todo listo. Elige WhatsApp y el encargado.');
+  }
+  function nombreArchivo(){ return 'respaldo_' + otLimpia() + '_' + (st.causa || '') + '.jpg'; }
+  async function enviar(){
+    estampar();                               // hora y GPS al momento de enviar
+    await new Promise(function(r){ const t = setInterval(function(){ if(st.blob){ clearInterval(t); r(); } }, 50); });
+    const file = new File([st.blob], nombreArchivo(), { type: 'image/jpeg' });
+    const data = { files: [file], text: st.texto, title: 'Respaldo OT ' + otLimpia() };
+    if(navigator.canShare && navigator.canShare({ files: [file] })){
+      try { await navigator.share(data); mostrarListo(false); return; }
+      catch(e){ if(e && e.name === 'AbortError') return; }
+    }
+    mostrarListo(true);
+  }
+  $('btnEnviar').addEventListener('click', enviar);
+
+  function mostrarListo(planB){
+    $('form').hidden = true; $('listo').hidden = false; window.scrollTo(0, 0);
+    $('planB').hidden = !planB;
+    $('listoTit').textContent = planB ? 'Envíalo en 2 pasos' : 'Respaldo enviado';
+    $('listoTxt').textContent = planB ? 'Este celular no deja mandar la foto directo.' : 'Revisa en WhatsApp que el mensaje haya salido.';
+    $('btnWa').href = (wa ? 'https://wa.me/' + wa : 'https://wa.me/') + '?text=' + encodeURIComponent(st.texto);
+  }
+  $('btnGuardar').addEventListener('click', function(){
+    const a = document.createElement('a'); a.href = URL.createObjectURL(st.blob); a.download = nombreArchivo();
+    document.body.appendChild(a); a.click(); a.remove();
+  });
+  $('btnReenviar').addEventListener('click', function(){ $('listo').hidden = true; $('form').hidden = false; enviar(); });
+  $('btnNuevo').addEventListener('click', function(){
+    st.causa = null; st.llamo = ''; st.img = null; st.blob = null; st.fotoVieja = false;
+    $('ot').value = '1-'; $('obs').value = ''; $('reFecha').value = ''; $('reFranja').value = ''; $('deMotivo').value = '';
+    document.querySelectorAll('[aria-pressed=true]').forEach(function(b){ b.setAttribute('aria-pressed', 'false'); });
+    ['exSM', 'exRE', 'exDE'].forEach(function(id){ $(id).hidden = true; });
+    $('prev').hidden = true; $('fotoVieja').hidden = true; $('fotoTxt').textContent = 'Tomar foto';
+    $('listo').hidden = true; $('form').hidden = false; window.scrollTo(0, 0); revisar();
+  });
+  revisar();
+})();
+</script>
+</body>
+</html>
