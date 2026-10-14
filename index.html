@@ -336,19 +336,31 @@
     lineas.push(p ? 'GPS ' + p.lat.toFixed(6) + ', ' + p.lng.toFixed(6) + '  (±' + p.acc + ' m)' : 'GPS sin ubicación');
     if(det) lineas.push(det);
     if(obs) lineas.push(obs.length > 80 ? obs.slice(0, 78) + '…' : obs);
-    const altoBanda = pad * 2 + fsG * 1.25 + lineas.length * lh;
+    /* la marca va al lado de la causa; si no cabe (foto vertical), va en una linea propia al final */
+    const marca = 'Dominion · respaldo de visita', fsM = Math.round(fs * .8);
+    g.font = '800 ' + fsG + 'px system-ui, -apple-system, Roboto, Arial, sans-serif';
+    const anchoTit = g.measureText(st.causa ? CAUSAS[st.causa] : 'ELIGE QUÉ PASÓ').width;
+    g.font = '600 ' + fsM + 'px system-ui, -apple-system, Roboto, Arial, sans-serif';
+    const anchoMarca = g.measureText(marca).width;
+    const marcaAparte = pad + 10 * u + anchoTit + 24 * u + anchoMarca > W - pad;
+    const altoBanda = pad * 2 + fsG * 1.25 + lineas.length * lh + (marcaAparte ? fsM * 1.3 : 0);
     g.fillStyle = 'rgba(8,15,26,.78)'; g.fillRect(0, H - altoBanda, W, altoBanda);
     g.fillStyle = st.causa ? COLOR[st.causa] : '#64748b'; g.fillRect(0, H - altoBanda, Math.round(10 * u), altoBanda);
     g.textBaseline = 'top';
     let y = H - altoBanda + pad;
     g.font = '800 ' + fsG + 'px system-ui, -apple-system, Roboto, Arial, sans-serif';
     g.fillStyle = '#ffffff'; g.fillText(st.causa ? CAUSAS[st.causa] : 'ELIGE QUÉ PASÓ', pad + 10 * u, y);
-    g.font = '600 ' + Math.round(fs * .8) + 'px system-ui, -apple-system, Roboto, Arial, sans-serif'; g.fillStyle = 'rgba(255,255,255,.7)';
-    const marca = 'Dominion · respaldo de visita';
-    g.fillText(marca, W - pad - g.measureText(marca).width, y + (fsG - fs * .8) / 2);
+    if(!marcaAparte){
+      g.font = '600 ' + fsM + 'px system-ui, -apple-system, Roboto, Arial, sans-serif'; g.fillStyle = 'rgba(255,255,255,.7)';
+      g.fillText(marca, W - pad - anchoMarca, y + (fsG - fsM) / 2);
+    }
     y += fsG * 1.25;
     g.font = '500 ' + fs + 'px system-ui, -apple-system, Roboto, Arial, sans-serif'; g.fillStyle = '#ffffff';
     lineas.forEach(function(t){ g.fillText(t, pad + 10 * u, y, W - pad * 2 - 10 * u); y += lh; });
+    if(marcaAparte){
+      g.font = '600 ' + fsM + 'px system-ui, -apple-system, Roboto, Arial, sans-serif'; g.fillStyle = 'rgba(255,255,255,.7)';
+      g.fillText(marca, pad + 10 * u, y + fsM * .15, W - pad * 2 - 10 * u);
+    }
     cv.hidden = false;
     st.texto = textoMensaje(ahora);
     st.blob = null;
