@@ -18,6 +18,11 @@
   del receptor (Apps Script, archivo google/Codigo.gs), cada respaldo se
   guarda ademas en Drive (foto) y en una planilla (fila). Primero queda en una
   cola dentro del celular: si no hay senal se sube solo cuando vuelve.
+  MAL DERIVADA y TICKET (15-10-2026, pedido de los supervisores): cuarta causa
+  "Mal derivada" (la plataforma de VTR/CLARO cerro la orden con otra causa:
+  el tecnico marca que paso de verdad y como la cerro la plataforma) y casilla
+  "N° de ticket de la plataforma" en todas las causas (obligatoria solo en Mal
+  derivada). El ticket va estampado, en el WhatsApp y al receptor (campo ticket).
   Opcional en el link: ?wa=56912345678 -> numero del encargado para el plan B
   (cuando el celular no deja compartir la foto directo).
 -->
@@ -30,6 +35,7 @@
     --sm: #b45309; --sm-bg: #fff4e5;      /* sin moradores */
     --re: #1d4ed8; --re-bg: #e8f0fe;      /* cliente reagenda */
     --de: #b91c1c; --de-bg: #fde8e8;      /* cliente desiste */
+    --md: #7c3aed; --md-bg: #f1eafe;      /* mal derivada (15-10-2026) */
     --ok: #15803d; --ok-bg: #e7f6ec; --warn: #b45309; --warn-bg: #fff4e5;
     --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   }
@@ -37,14 +43,14 @@
     :root:not([data-theme="light"]) {
       --bg: #0b1420; --card: #132131; --fg: #e8eef5; --muted: #9db0c3; --line: #263a50;
       --brand: #0a1d33; --accent: #6ea0ff;
-      --sm: #f5a524; --sm-bg: #33240d; --re: #8fb3ff; --re-bg: #142a4d; --de: #ff8a8a; --de-bg: #3a1616;
+      --sm: #f5a524; --sm-bg: #33240d; --re: #8fb3ff; --re-bg: #142a4d; --de: #ff8a8a; --de-bg: #3a1616; --md: #b794ff; --md-bg: #2a1b47;
       --ok: #4ade80; --ok-bg: #12301d; --warn: #f5a524; --warn-bg: #33240d; color-scheme: dark;
     }
   }
   :root[data-theme="dark"] {
     --bg: #0b1420; --card: #132131; --fg: #e8eef5; --muted: #9db0c3; --line: #263a50;
     --brand: #0a1d33; --accent: #6ea0ff;
-    --sm: #f5a524; --sm-bg: #33240d; --re: #8fb3ff; --re-bg: #142a4d; --de: #ff8a8a; --de-bg: #3a1616;
+    --sm: #f5a524; --sm-bg: #33240d; --re: #8fb3ff; --re-bg: #142a4d; --de: #ff8a8a; --de-bg: #3a1616; --md: #b794ff; --md-bg: #2a1b47;
     --ok: #4ade80; --ok-bg: #12301d; --warn: #f5a524; --warn-bg: #33240d; color-scheme: dark;
   }
   * { box-sizing: border-box; }
@@ -83,10 +89,19 @@
   .causas button[data-c=SM] i { background: var(--sm); } .causas button[data-c=SM][aria-pressed=true] { border-color: var(--sm); background: var(--sm-bg); }
   .causas button[data-c=RE] i { background: var(--re); } .causas button[data-c=RE][aria-pressed=true] { border-color: var(--re); background: var(--re-bg); }
   .causas button[data-c=DE] i { background: var(--de); } .causas button[data-c=DE][aria-pressed=true] { border-color: var(--de); background: var(--de-bg); }
+  .causas button[data-c=MD] i { background: var(--md); } .causas button[data-c=MD][aria-pressed=true] { border-color: var(--md); background: var(--md-bg); }
   .extra { display: grid; gap: 10px; margin-top: 12px; }
   .si-no { display: flex; gap: 8px; }
   .si-no button { flex: 1; padding: 12px; border-radius: 10px; border: 2px solid var(--line); background: var(--card); color: var(--fg); font: 600 16px var(--font); }
   .si-no button[aria-pressed=true] { border-color: var(--accent); background: var(--re-bg); }
+  /* MAL DERIVADA y TICKET (15-10-2026) */
+  .opc { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .opc button { padding: 11px 8px; border-radius: 10px; border: 2px solid var(--line); background: var(--card); color: var(--fg); font: 600 15px var(--font); }
+  .opc button[aria-pressed=true] { border-color: var(--md); background: var(--md-bg); }
+  .ticket { border: 2px dashed var(--line); border-radius: 12px; padding: 10px 12px 12px; }
+  .ticket.oblig { border-color: var(--md); }
+  .ticket .marca { font-size: 12px; font-weight: 700; border-radius: 6px; padding: 1px 7px; margin-left: 6px; background: var(--bg); color: var(--muted); }
+  .ticket.oblig .marca { background: var(--md); color: #fff; }
   .foto-btn { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; padding: 18px; border-radius: 12px;
     border: 2px dashed var(--accent); background: var(--re-bg); color: var(--accent); font: 700 18px var(--font); cursor: pointer; }
   .foto-btn svg { width: 26px; height: 26px; }
@@ -142,6 +157,7 @@
       <button type="button" data-c="SM" aria-pressed="false"><i></i><span>Sin moradores<small>No hay nadie en la casa</small></span></button>
       <button type="button" data-c="RE" aria-pressed="false"><i></i><span>Cliente reagenda<small>Pide otro día u hora</small></span></button>
       <button type="button" data-c="DE" aria-pressed="false"><i></i><span>Cliente desiste<small>Ya no quiere el trabajo</small></span></button>
+      <button type="button" data-c="MD" aria-pressed="false"><i></i><span>Mal derivada<small>La plataforma la cerró con otra causa</small></span></button>
     </div>
     <div class="extra" id="exSM" hidden>
       <span class="l">¿Llamaste al cliente?</span>
@@ -159,6 +175,27 @@
       <div><label class="l" for="deMotivo">Motivo</label>
         <select id="deMotivo"><option value="">Elige un motivo</option><option>No quiere el servicio</option><option>Ya tiene otro proveedor</option><option>Por el precio</option><option>No pidió el trabajo</option><option>Otro</option></select></div>
     </div>
+    <div class="extra" id="exMD" hidden>
+      <span class="l">Qué pasó de verdad</span>
+      <div class="opc" id="mdReal">
+        <button type="button" data-v="Sin moradores" aria-pressed="false">Sin moradores</button>
+        <button type="button" data-v="Cliente reagenda" aria-pressed="false">Cliente reagenda</button>
+        <button type="button" data-v="Cliente desiste" aria-pressed="false">Cliente desiste</button>
+        <button type="button" data-v="Otra causa" aria-pressed="false">Otra causa</button>
+      </div>
+      <span class="l">Cómo la cerró la plataforma</span>
+      <div class="opc" id="mdPlat">
+        <button type="button" data-v="Sin moradores" aria-pressed="false">Sin moradores</button>
+        <button type="button" data-v="Cliente reagenda" aria-pressed="false">Cliente reagenda</button>
+        <button type="button" data-v="Cliente desiste" aria-pressed="false">Cliente desiste</button>
+        <button type="button" data-v="Otra causa" aria-pressed="false">Otra causa</button>
+      </div>
+      <p class="err" id="mdErr" hidden>Si la plataforma la cerró igual a lo que pasó, no es mal derivada.</p>
+    </div>
+    <div class="extra"><div class="ticket" id="tkBox">
+      <label class="l" for="tk">N° de ticket de la plataforma<span class="marca" id="tkMarca">opcional</span></label>
+      <input id="tk" type="text" inputmode="numeric" autocomplete="off" spellcheck="false" maxlength="30" placeholder="El número que te dio la plataforma">
+    </div></div>
     <div class="extra"><div><label class="l" for="obs">Comentario (opcional)</label><textarea id="obs" maxlength="200" placeholder="Ej: casa con reja cerrada, se tocó timbre 3 veces"></textarea></div></div>
   </section>
 
@@ -222,17 +259,17 @@
 (function(){
   'use strict';
   const $ = function(id){ return document.getElementById(id); };
-  const CAUSAS = { SM: 'SIN MORADORES', RE: 'CLIENTE REAGENDA', DE: 'CLIENTE DESISTE' };
-  const COLOR = { SM: '#d97706', RE: '#2563eb', DE: '#dc2626' };
+  const CAUSAS = { SM: 'SIN MORADORES', RE: 'CLIENTE REAGENDA', DE: 'CLIENTE DESISTE', MD: 'MAL DERIVADA' };
+  const COLOR = { SM: '#d97706', RE: '#2563eb', DE: '#dc2626', MD: '#7c3aed' };
   const FOTO_MAX_MIN = 15;          // una foto mas vieja que esto se marca como "no es de recien"
   const LADO_MAX = 1600;            // la foto se achica a este lado mayor para que pese poco
-  const st = { causa: null, llamo: '', img: null, fotoHora: null, fotoVieja: false, pos: null, blob: null, texto: '' };
+  const st = { causa: null, llamo: '', real: '', plat: '', img: null, fotoHora: null, fotoVieja: false, pos: null, blob: null, texto: '' };
   const wa = (new URLSearchParams(location.search).get('wa') || '').replace(/\D/g, '');
 
   /* ---- guardado en Google ---- */
   const URL_GUARDAR = 'https://script.google.com/macros/s/AKfycbyRceaPgxD-dQsuH7CSl9SsJXcq-s2ELrczVdZtGykH2Cu-MfiEAvT0lWlQCnLuW68z/exec';            // direccion del receptor (termina en /exec). Vacia = solo WhatsApp
   const CLAVE = 'dominion-zc-2026';   // la misma de Codigo.gs
-  const VERSION = '2026-10-14';
+  const VERSION = '2026-10-15';
   let ultimoId = null;
 
   /* ---- tecnico (se guarda en el celular) ---- */
@@ -261,8 +298,27 @@
     st.causa = b.dataset.c;
     Array.prototype.forEach.call($('causas').children, function(x){ x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
     $('exSM').hidden = st.causa !== 'SM'; $('exRE').hidden = st.causa !== 'RE'; $('exDE').hidden = st.causa !== 'DE';
-    if(st.img) estampar(); revisar();
+    $('exMD').hidden = st.causa !== 'MD';
+    pintarTicket(); if(st.img) estampar(); revisar();
   });
+  /* MAL DERIVADA (15-10-2026): que paso de verdad y como la cerro la plataforma */
+  [['mdReal', 'real'], ['mdPlat', 'plat']].forEach(function(par){
+    $(par[0]).addEventListener('click', function(e){
+      const b = e.target.closest('button'); if(!b) return;
+      st[par[1]] = b.dataset.v;
+      Array.prototype.forEach.call($(par[0]).children, function(x){ x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
+      $('mdErr').hidden = !(st.real && st.plat && st.real === st.plat);
+      if(st.img) estampar(); revisar();
+    });
+  });
+  /* TICKET (15-10-2026): obligatorio solo en Mal derivada */
+  function ticket(){ return $('tk').value.trim().replace(/\s+/g, ' '); }
+  function pintarTicket(){
+    const ob = st.causa === 'MD';
+    $('tkBox').classList.toggle('oblig', ob); $('tkMarca').textContent = ob ? 'obligatorio' : 'opcional';
+  }
+  $('tk').addEventListener('input', revisar);
+  $('tk').addEventListener('change', function(){ if(st.img) estampar(); revisar(); });
   $('llamo').addEventListener('click', function(e){
     const b = e.target.closest('button'); if(!b) return;
     st.llamo = b.dataset.v;
@@ -316,6 +372,7 @@
     if(st.causa === 'RE'){ const f = $('reFecha').value, fr = $('reFranja').value;
       return f ? 'Nueva fecha ' + f.split('-').reverse().join('-') + (fr ? ' ' + fr : '') : (fr ? 'Franja ' + fr : ''); }
     if(st.causa === 'DE') return $('deMotivo').value;
+    if(st.causa === 'MD') return (st.real || st.plat) ? 'Real: ' + (st.real || '—') + ' · Plataforma: ' + (st.plat || '—') : '';
     return '';
   }
 
@@ -334,7 +391,10 @@
     lineas.push('OT ' + (otOk() ? otLimpia() : '—') + '   ·   ' + (tecnico || 'Técnico sin nombre'));
     lineas.push(fecha(ahora) + ' ' + hora(ahora) + (st.fotoVieja ? '   ·   ⚠ foto de las ' + hora(st.fotoHora) : ''));
     lineas.push(p ? 'GPS ' + p.lat.toFixed(6) + ', ' + p.lng.toFixed(6) + '  (±' + p.acc + ' m)' : 'GPS sin ubicación');
-    if(det) lineas.push(det);
+    if(ticket()) lineas.push('Ticket plataforma: ' + ticket());
+    /* en Mal derivada van en dos lineas: en una foto vertical no caben en una */
+    if(st.causa === 'MD' && det){ lineas.push('Real: ' + (st.real || '—')); lineas.push('Plataforma: ' + (st.plat || '—')); }
+    else if(det) lineas.push(det);
     if(obs) lineas.push(obs.length > 80 ? obs.slice(0, 78) + '…' : obs);
     /* la marca va al lado de la causa; si no cabe (foto vertical), va en una linea propia al final */
     const marca = 'Dominion · respaldo de visita', fsM = Math.round(fs * .8);
@@ -373,6 +433,7 @@
       + 'Técnico: ' + (tecnico || '—') + '\n'
       + 'Fecha: ' + fecha(ahora) + ' ' + hora(ahora) + (st.fotoVieja ? ' (foto de las ' + hora(st.fotoHora) + ')' : '') + '\n'
       + (det ? det + '\n' : '')
+      + (ticket() ? 'Ticket plataforma: ' + ticket() + '\n' : '')
       + (obs ? 'Comentario: ' + obs + '\n' : '')
       + (p ? 'Ubicación (±' + p.acc + ' m): https://maps.google.com/?q=' + p.lat.toFixed(6) + ',' + p.lng.toFixed(6) : 'Ubicación: no disponible');
   }
@@ -449,6 +510,11 @@
     if(!otOk()) f.push('OT');
     if(!st.causa) f.push('qué pasó');
     else if(st.causa === 'DE' && !$('deMotivo').value) f.push('motivo');
+    else if(st.causa === 'MD'){
+      if(!st.real || !st.plat) f.push('qué pasó y cómo la cerró la plataforma');
+      else if(st.real === st.plat) f.push('las dos causas son iguales');
+      if(!ticket()) f.push('N° de ticket');
+    }
     if(!st.img) f.push('foto');
     return f;
   }
@@ -467,7 +533,8 @@
       try {
         const p = st.pos;
         const r = { id: nuevoId(), clave: CLAVE, version: VERSION, fecha: new Date().toISOString(),
-          tecnico: tecnico, ot: otLimpia(), causa: st.causa, detalle: detalle(), comentario: $('obs').value.trim(),
+          tecnico: tecnico, ot: otLimpia(), causa: st.causa, detalle: detalle(), ticket: ticket(),
+          causaReal: st.causa === 'MD' ? st.real : '', causaPlataforma: st.causa === 'MD' ? st.plat : '', comentario: $('obs').value.trim(),
           lat: p ? p.lat : null, lng: p ? p.lng : null, acc: p ? p.acc : null,
           fotoVieja: st.fotoVieja, fotoHora: st.fotoVieja ? hora(st.fotoHora) : '', foto: await aBase64(st.blob) };
         await colaPoner(r); ultimoId = r.id;
@@ -504,10 +571,11 @@
     mostrarListo(true);
   });
   $('btnNuevo').addEventListener('click', function(){
-    st.causa = null; st.llamo = ''; st.img = null; st.blob = null; st.fotoVieja = false;
-    $('ot').value = '1-'; $('obs').value = ''; $('reFecha').value = ''; $('reFranja').value = ''; $('deMotivo').value = '';
+    st.causa = null; st.llamo = ''; st.real = ''; st.plat = ''; st.img = null; st.blob = null; st.fotoVieja = false;
+    $('ot').value = '1-'; $('obs').value = ''; $('reFecha').value = ''; $('reFranja').value = ''; $('deMotivo').value = ''; $('tk').value = '';
+    $('mdErr').hidden = true; pintarTicket();
     document.querySelectorAll('[aria-pressed=true]').forEach(function(b){ b.setAttribute('aria-pressed', 'false'); });
-    ['exSM', 'exRE', 'exDE'].forEach(function(id){ $(id).hidden = true; });
+    ['exSM', 'exRE', 'exDE', 'exMD'].forEach(function(id){ $(id).hidden = true; });
     $('prev').hidden = true; $('fotoVieja').hidden = true; $('fotoTxt').textContent = 'Tomar foto';
     ultimoId = null;
     $('listo').hidden = true; $('form').hidden = false; window.scrollTo(0, 0); revisar(); pintarPend();
