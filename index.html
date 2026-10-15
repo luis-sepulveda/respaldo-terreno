@@ -23,6 +23,8 @@
   el tecnico marca que paso de verdad y como la cerro la plataforma) y casilla
   "N° de ticket de la plataforma" en todas las causas (obligatoria solo en Mal
   derivada). El ticket va estampado, en el WhatsApp y al receptor (campo ticket). El ticket es alfanumerico: teclado normal.
+  OTRAS CAUSAS (15-10-2026, para registrar las no factibles): quinta causa
+  (codigo OC, gris) con lista de motivos; "Otro" obliga a escribir el comentario.
   Opcional en el link: ?wa=56912345678 -> numero del encargado para el plan B
   (cuando el celular no deja compartir la foto directo).
 -->
@@ -36,6 +38,7 @@
     --re: #1d4ed8; --re-bg: #e8f0fe;      /* cliente reagenda */
     --de: #b91c1c; --de-bg: #fde8e8;      /* cliente desiste */
     --md: #7c3aed; --md-bg: #f1eafe;      /* mal derivada (15-10-2026) */
+    --oc: #475569; --oc-bg: #eef1f5;      /* otras causas / no factibles (15-10-2026) */
     --ok: #15803d; --ok-bg: #e7f6ec; --warn: #b45309; --warn-bg: #fff4e5;
     --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   }
@@ -43,14 +46,14 @@
     :root:not([data-theme="light"]) {
       --bg: #0b1420; --card: #132131; --fg: #e8eef5; --muted: #9db0c3; --line: #263a50;
       --brand: #0a1d33; --accent: #6ea0ff;
-      --sm: #f5a524; --sm-bg: #33240d; --re: #8fb3ff; --re-bg: #142a4d; --de: #ff8a8a; --de-bg: #3a1616; --md: #b794ff; --md-bg: #2a1b47;
+      --sm: #f5a524; --sm-bg: #33240d; --re: #8fb3ff; --re-bg: #142a4d; --de: #ff8a8a; --de-bg: #3a1616; --md: #b794ff; --md-bg: #2a1b47; --oc: #a3b1c2; --oc-bg: #1e2a38;
       --ok: #4ade80; --ok-bg: #12301d; --warn: #f5a524; --warn-bg: #33240d; color-scheme: dark;
     }
   }
   :root[data-theme="dark"] {
     --bg: #0b1420; --card: #132131; --fg: #e8eef5; --muted: #9db0c3; --line: #263a50;
     --brand: #0a1d33; --accent: #6ea0ff;
-    --sm: #f5a524; --sm-bg: #33240d; --re: #8fb3ff; --re-bg: #142a4d; --de: #ff8a8a; --de-bg: #3a1616; --md: #b794ff; --md-bg: #2a1b47;
+    --sm: #f5a524; --sm-bg: #33240d; --re: #8fb3ff; --re-bg: #142a4d; --de: #ff8a8a; --de-bg: #3a1616; --md: #b794ff; --md-bg: #2a1b47; --oc: #a3b1c2; --oc-bg: #1e2a38;
     --ok: #4ade80; --ok-bg: #12301d; --warn: #f5a524; --warn-bg: #33240d; color-scheme: dark;
   }
   * { box-sizing: border-box; }
@@ -89,6 +92,7 @@
   .causas button[data-c=SM] i { background: var(--sm); } .causas button[data-c=SM][aria-pressed=true] { border-color: var(--sm); background: var(--sm-bg); }
   .causas button[data-c=RE] i { background: var(--re); } .causas button[data-c=RE][aria-pressed=true] { border-color: var(--re); background: var(--re-bg); }
   .causas button[data-c=DE] i { background: var(--de); } .causas button[data-c=DE][aria-pressed=true] { border-color: var(--de); background: var(--de-bg); }
+  .causas button[data-c=OC] i { background: var(--oc); } .causas button[data-c=OC][aria-pressed=true] { border-color: var(--oc); background: var(--oc-bg); }
   .causas button[data-c=MD] i { background: var(--md); } .causas button[data-c=MD][aria-pressed=true] { border-color: var(--md); background: var(--md-bg); }
   .extra { display: grid; gap: 10px; margin-top: 12px; }
   .si-no { display: flex; gap: 8px; }
@@ -158,6 +162,7 @@
       <button type="button" data-c="RE" aria-pressed="false"><i></i><span>Cliente reagenda<small>Pide otro día u hora</small></span></button>
       <button type="button" data-c="DE" aria-pressed="false"><i></i><span>Cliente desiste<small>Ya no quiere el trabajo</small></span></button>
       <button type="button" data-c="MD" aria-pressed="false"><i></i><span>Mal derivada<small>La plataforma la cerró con otra causa</small></span></button>
+      <button type="button" data-c="OC" aria-pressed="false"><i></i><span>Otras causas<small>No factible u otro motivo</small></span></button>
     </div>
     <div class="extra" id="exSM" hidden>
       <span class="l">¿Llamaste al cliente?</span>
@@ -174,6 +179,11 @@
     <div class="extra" id="exDE" hidden>
       <div><label class="l" for="deMotivo">Motivo</label>
         <select id="deMotivo"><option value="">Elige un motivo</option><option>No quiere el servicio</option><option>Ya tiene otro proveedor</option><option>Por el precio</option><option>No pidió el trabajo</option><option>Otro</option></select></div>
+    </div>
+    <div class="extra" id="exOC" hidden>
+      <div><label class="l" for="ocMotivo">Motivo</label>
+        <select id="ocMotivo"><option value="">Elige un motivo</option><option>Ductos tapados</option><option>Sin apoyo vivienda / Pierrack</option><option>Sin apoyo de poste</option><option>Dirección incorrecta</option><option>NAP sin puertos / sin facilidades</option><option>Acometida fuera de norma</option><option>Sin acceso a cámara</option><option>Otro</option></select></div>
+      <p class="err" id="ocErr" hidden>Con "Otro", escribe el motivo en el comentario.</p>
     </div>
     <div class="extra" id="exMD" hidden>
       <span class="l">Qué pasó de verdad</span>
@@ -259,8 +269,8 @@
 (function(){
   'use strict';
   const $ = function(id){ return document.getElementById(id); };
-  const CAUSAS = { SM: 'SIN MORADORES', RE: 'CLIENTE REAGENDA', DE: 'CLIENTE DESISTE', MD: 'MAL DERIVADA' };
-  const COLOR = { SM: '#d97706', RE: '#2563eb', DE: '#dc2626', MD: '#7c3aed' };
+  const CAUSAS = { SM: 'SIN MORADORES', RE: 'CLIENTE REAGENDA', DE: 'CLIENTE DESISTE', MD: 'MAL DERIVADA', OC: 'OTRAS CAUSAS' };
+  const COLOR = { SM: '#d97706', RE: '#2563eb', DE: '#dc2626', MD: '#7c3aed', OC: '#94a3b8' };   // OC mas claro: sobre la franja oscura el gris oscuro no se ve
   const FOTO_MAX_MIN = 15;          // una foto mas vieja que esto se marca como "no es de recien"
   const LADO_MAX = 1600;            // la foto se achica a este lado mayor para que pese poco
   const st = { causa: null, llamo: '', real: '', plat: '', img: null, fotoHora: null, fotoVieja: false, pos: null, blob: null, texto: '' };
@@ -298,7 +308,7 @@
     st.causa = b.dataset.c;
     Array.prototype.forEach.call($('causas').children, function(x){ x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
     $('exSM').hidden = st.causa !== 'SM'; $('exRE').hidden = st.causa !== 'RE'; $('exDE').hidden = st.causa !== 'DE';
-    $('exMD').hidden = st.causa !== 'MD';
+    $('exMD').hidden = st.causa !== 'MD'; $('exOC').hidden = st.causa !== 'OC';
     pintarTicket(); if(st.img) estampar(); revisar();
   });
   /* MAL DERIVADA (15-10-2026): que paso de verdad y como la cerro la plataforma */
@@ -326,7 +336,8 @@
     Array.prototype.forEach.call($('llamo').children, function(x){ x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
     if(st.img) estampar();
   });
-  ['reFecha', 'reFranja', 'deMotivo', 'obs'].forEach(function(id){ $(id).addEventListener('change', function(){ if(st.img) estampar(); revisar(); }); });
+  $('obs').addEventListener('input', revisar);   /* con "Otro" el comentario es obligatorio */
+  ['reFecha', 'reFranja', 'deMotivo', 'ocMotivo', 'obs'].forEach(function(id){ $(id).addEventListener('change', function(){ if(st.img) estampar(); revisar(); }); });
 
   /* ---- GPS ---- */
   let gpsWatch = null;
@@ -373,6 +384,7 @@
     if(st.causa === 'RE'){ const f = $('reFecha').value, fr = $('reFranja').value;
       return f ? 'Nueva fecha ' + f.split('-').reverse().join('-') + (fr ? ' ' + fr : '') : (fr ? 'Franja ' + fr : ''); }
     if(st.causa === 'DE') return $('deMotivo').value;
+    if(st.causa === 'OC') return $('ocMotivo').value;
     if(st.causa === 'MD') return (st.real || st.plat) ? 'Real: ' + (st.real || '—') + ' · Plataforma: ' + (st.plat || '—') : '';
     return '';
   }
@@ -511,6 +523,10 @@
     if(!otOk()) f.push('OT');
     if(!st.causa) f.push('qué pasó');
     else if(st.causa === 'DE' && !$('deMotivo').value) f.push('motivo');
+    else if(st.causa === 'OC'){
+      if(!$('ocMotivo').value) f.push('motivo');
+      else if($('ocMotivo').value === 'Otro' && !$('obs').value.trim()) f.push('comentario con el motivo');
+    }
     else if(st.causa === 'MD'){
       if(!st.real || !st.plat) f.push('qué pasó y cómo la cerró la plataforma');
       else if(st.real === st.plat) f.push('las dos causas son iguales');
@@ -521,6 +537,7 @@
   }
   function revisar(){
     const f = faltan();
+    $('ocErr').hidden = !(st.causa === 'OC' && $('ocMotivo').value === 'Otro' && !$('obs').value.trim());
     /* no se desactiva mientras se arma la foto: enviar() espera a que este lista
        (si no, tocar Enviar justo despues de escribir el comentario no hacia nada) */
     $('btnEnviar').disabled = f.length > 0;
@@ -573,10 +590,10 @@
   });
   $('btnNuevo').addEventListener('click', function(){
     st.causa = null; st.llamo = ''; st.real = ''; st.plat = ''; st.img = null; st.blob = null; st.fotoVieja = false;
-    $('ot').value = '1-'; $('obs').value = ''; $('reFecha').value = ''; $('reFranja').value = ''; $('deMotivo').value = ''; $('tk').value = '';
+    $('ot').value = '1-'; $('obs').value = ''; $('reFecha').value = ''; $('reFranja').value = ''; $('deMotivo').value = ''; $('ocMotivo').value = ''; $('tk').value = '';
     $('mdErr').hidden = true; pintarTicket();
     document.querySelectorAll('[aria-pressed=true]').forEach(function(b){ b.setAttribute('aria-pressed', 'false'); });
-    ['exSM', 'exRE', 'exDE', 'exMD'].forEach(function(id){ $(id).hidden = true; });
+    ['exSM', 'exRE', 'exDE', 'exMD', 'exOC'].forEach(function(id){ $(id).hidden = true; });
     $('prev').hidden = true; $('fotoVieja').hidden = true; $('fotoTxt').textContent = 'Tomar foto';
     ultimoId = null;
     $('listo').hidden = true; $('form').hidden = false; window.scrollTo(0, 0); revisar(); pintarPend();
