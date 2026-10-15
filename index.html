@@ -22,7 +22,7 @@
   "Mal derivada" (la plataforma de VTR/CLARO cerro la orden con otra causa:
   el tecnico marca que paso de verdad y como la cerro la plataforma) y casilla
   "N° de ticket de la plataforma" en todas las causas (obligatoria solo en Mal
-  derivada). El ticket va estampado, en el WhatsApp y al receptor (campo ticket).
+  derivada). El ticket va estampado, en el WhatsApp y al receptor (campo ticket). El ticket es alfanumerico: teclado normal.
   Opcional en el link: ?wa=56912345678 -> numero del encargado para el plan B
   (cuando el celular no deja compartir la foto directo).
 -->
@@ -194,7 +194,7 @@
     </div>
     <div class="extra"><div class="ticket" id="tkBox">
       <label class="l" for="tk">N° de ticket de la plataforma<span class="marca" id="tkMarca">opcional</span></label>
-      <input id="tk" type="text" inputmode="numeric" autocomplete="off" spellcheck="false" maxlength="30" placeholder="El número que te dio la plataforma">
+      <input id="tk" type="text" inputmode="text" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" maxlength="30" placeholder="Letras y números, como te lo dio la plataforma">
     </div></div>
     <div class="extra"><div><label class="l" for="obs">Comentario (opcional)</label><textarea id="obs" maxlength="200" placeholder="Ej: casa con reja cerrada, se tocó timbre 3 veces"></textarea></div></div>
   </section>
@@ -312,7 +312,8 @@
     });
   });
   /* TICKET (15-10-2026): obligatorio solo en Mal derivada */
-  function ticket(){ return $('tk').value.trim().replace(/\s+/g, ' '); }
+  /* el ticket es alfanumerico (15-10-2026): se guarda en mayusculas, sin espacios de mas */
+  function ticket(){ return $('tk').value.trim().replace(/\s+/g, ' ').toUpperCase(); }
   function pintarTicket(){
     const ob = st.causa === 'MD';
     $('tkBox').classList.toggle('oblig', ob); $('tkMarca').textContent = ob ? 'obligatorio' : 'opcional';
