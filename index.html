@@ -279,7 +279,7 @@
   /* ---- guardado en Google ---- */
   const URL_GUARDAR = 'https://script.google.com/macros/s/AKfycbyRceaPgxD-dQsuH7CSl9SsJXcq-s2ELrczVdZtGykH2Cu-MfiEAvT0lWlQCnLuW68z/exec';            // direccion del receptor (termina en /exec). Vacia = solo WhatsApp
   const CLAVE = 'dominion-zc-2026';   // la misma de Codigo.gs
-  const VERSION = '2026-10-15';
+  const VERSION = '2026-10-21';
   let ultimoId = null;
 
   /* ---- tecnico (se guarda en el celular) ---- */
@@ -598,6 +598,144 @@
     ultimoId = null;
     $('listo').hidden = true; $('form').hidden = false; window.scrollTo(0, 0); revisar(); pintarPend();
   });
+
+  /* ===================================================================
+     CAMARA DENTRO DE LA PAGINA + BORRADOR (21-10-2026)
+     Caso real (21-10, Alfredo Alcayaga): al tocar "Tomar foto" se abria la
+     app de camara del telefono; al volver con "Aceptar", Android ya habia
+     cerrado la pestana de Chrome para liberar memoria y la pagina partia
+     de cero: sin OT, sin causa y sin foto. Dos arreglos:
+     1) La camara se abre DENTRO de la pagina (getUserMedia): no se sale de
+        Chrome, asi que no hay nada que cerrar. Si el telefono no lo permite
+        (permiso negado, navegador antiguo), se usa la camara de siempre.
+     2) Todo lo escrito se guarda en el telefono mientras se llena (borrador,
+        3 horas) y vuelve solo si la pagina se recarga. Se borra al enviar.
+     =================================================================== */
+  const KB = 'rt_borrador', KBF = 'rt_borrador_foto', BORR_MAX_MIN = 180;
+  let restaurando = false;
+  function guardarBorrador(){
+    if(restaurando) return;
+    try {
+      localStorage.setItem(KB, JSON.stringify({ t: Date.now(), ot: $('ot').value, causa: st.causa,
+        llamo: st.llamo, real: st.real, plat: st.plat, tk: $('tk').value, obs: $('obs').value,
+        reFecha: $('reFecha').value, reFranja: $('reFranja').value,
+        deMotivo: $('deMotivo').value, ocMotivo: $('ocMotivo').value }));
+    } catch(e){}
+  }
+  function guardarFotoBorrador(){
+    try {
+      if(!st.img){ localStorage.removeItem(KBF); return; }
+      const im = st.img, k = Math.min(1, 1280 / Math.max(im.naturalWidth, im.naturalHeight));
+      const c = document.createElement('canvas');
+      c.width = Math.round(im.naturalWidth * k); c.height = Math.round(im.naturalHeight * k);
+      c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
+      localStorage.setItem(KBF, JSON.stringify({ u: c.toDataURL('image/jpeg', 0.8),
+        h: st.fotoHora ? st.fotoHora.getTime() : Date.now() }));
+    } catch(e){}
+  }
+  function borrarBorrador(){ try { localStorage.removeItem(KB); localStorage.removeItem(KBF); } catch(e){} }
+  let tBorr = null;
+  function guardarLuego(){ clearTimeout(tBorr); tBorr = setTimeout(guardarBorrador, 300); }
+  $('form').addEventListener('input', guardarLuego);
+  $('form').addEventListener('change', guardarLuego);
+  $('form').addEventListener('click', function(){ setTimeout(guardarBorrador, 0); });
+
+  /* foto: una sola entrada para las dos vias (camara de la pagina o del telefono) */
+  function ponerFoto(url, cuando){
+    const im = new Image();
+    im.onload = function(){
+      st.img = im; st.fotoHora = cuando;
+      st.fotoVieja = (Date.now() - cuando.getTime()) > FOTO_MAX_MIN * 60000;
+      $('fotoVieja').hidden = !st.fotoVieja;
+      $('fotoTxt').textContent = 'Cambiar foto'; estampar(); revisar(); guardarFotoBorrador();
+    };
+    im.onerror = function(){ $('fotoTxt').textContent = 'No se pudo leer la foto, toma otra'; };
+    im.src = url;
+  }
+  /* la foto de la camara del telefono tambien queda en el borrador */
+  $('fotoIn').addEventListener('change', function(){
+    const antes = st.img; let n = 0;
+    const t = setInterval(function(){ n++;
+      if(st.img && st.img !== antes){ clearInterval(t); guardarFotoBorrador(); }
+      else if(n > 40) clearInterval(t);
+    }, 250);
+  });
+
+  /* camara dentro de la pagina */
+  const cam = document.createElement('div');
+  cam.id = 'camIn'; cam.hidden = true;
+  cam.innerHTML = '<video id="camVid" autoplay playsinline muted></video>'
+    + '<div class="cam-bar"><button type="button" id="camNo">Cancelar</button>'
+    + '<button type="button" id="camDisp" aria-label="Sacar foto"></button>'
+    + '<button type="button" id="camGal">Usar cámara del teléfono</button></div>';
+  document.body.appendChild(cam);
+  const css = document.createElement('style');
+  css.textContent = '#camIn{position:fixed;inset:0;z-index:9999;background:#000;display:flex;flex-direction:column}'
+    + '#camIn[hidden]{display:none}#camVid{flex:1;width:100%;object-fit:contain;background:#000}'
+    + '.cam-bar{display:flex;align-items:center;justify-content:space-between;padding:16px 18px 26px;gap:10px}'
+    + '.cam-bar button{background:none;border:0;color:#fff;font:inherit;font-size:14px;max-width:34%}'
+    + '#camDisp{width:72px;height:72px;border-radius:50%;background:#fff;border:5px solid #94a3b8;flex:none;max-width:none}'
+    + '#camDisp:active{transform:scale(.94)}';
+  document.head.appendChild(css);
+  let flujo = null;
+  function camCerrar(){
+    if(flujo){ flujo.getTracks().forEach(function(t){ t.stop(); }); flujo = null; }
+    $('camVid').srcObject = null; cam.hidden = true;
+  }
+  function camTelefono(){ camCerrar(); $('fotoIn').click(); }
+  /* Si la camara de la pagina no se puede usar, el boton vuelve a abrir la
+     camara del telefono como antes (el navegador no deja abrirla sola
+     despues de una espera: por eso se pide tocar de nuevo). */
+  let usarTelefono = !(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  async function camAbrir(){
+    try {
+      flujo = await navigator.mediaDevices.getUserMedia({ audio: false,
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } } });
+      $('camVid').srcObject = flujo; cam.hidden = false;
+    } catch(e){
+      camCerrar(); usarTelefono = true;
+      $('fotoTxt').textContent = 'Toca de nuevo para abrir la cámara';
+    }
+  }
+  $('fotoLbl').addEventListener('click', function(e){
+    if(usarTelefono) return;          // deja que el label abra la camara del telefono
+    e.preventDefault(); camAbrir();
+  });
+  $('camNo').addEventListener('click', camCerrar);
+  $('camGal').addEventListener('click', camTelefono);
+  $('camDisp').addEventListener('click', function(){
+    const v = $('camVid'); if(!v.videoWidth) return;
+    const c = document.createElement('canvas'); c.width = v.videoWidth; c.height = v.videoHeight;
+    c.getContext('2d').drawImage(v, 0, 0);
+    const cuando = new Date();
+    camCerrar();
+    ponerFoto(c.toDataURL('image/jpeg', 0.92), cuando);
+  });
+
+  /* al enviar o al empezar uno nuevo, el borrador se borra */
+  const _listo = mostrarListo;
+  mostrarListo = function(a, b){ borrarBorrador(); return _listo(a, b); };
+  $('btnNuevo').addEventListener('click', borrarBorrador);
+
+  /* si la pagina se recargo con algo a medio llenar, se recupera */
+  (function recuperar(){
+    let d = null, f = null;
+    try { d = JSON.parse(localStorage.getItem(KB) || 'null'); f = JSON.parse(localStorage.getItem(KBF) || 'null'); } catch(e){}
+    if(!d || !d.t || (Date.now() - d.t) > BORR_MAX_MIN * 60000){ borrarBorrador(); return; }
+    restaurando = true;
+    try {
+      if(d.ot) $('ot').value = d.ot;
+      ['tk', 'obs', 'reFecha', 'reFranja', 'deMotivo', 'ocMotivo'].forEach(function(id){ if(d[id]) $(id).value = d[id]; });
+      if(d.causa){ const b = $('causas').querySelector('[data-c="' + d.causa + '"]'); if(b) b.click(); }
+      [['llamo', d.llamo], ['mdReal', d.real], ['mdPlat', d.plat]].forEach(function(p){
+        if(!p[1]) return;
+        Array.prototype.forEach.call($(p[0]).children, function(b){ if(b.dataset.v === p[1]) b.click(); });
+      });
+    } catch(e){}
+    restaurando = false;
+    if(f && f.u) ponerFoto(f.u, new Date(f.h || Date.now()));
+    revisar();
+  })();
   revisar();
 })();
 </script>
