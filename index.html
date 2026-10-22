@@ -279,7 +279,7 @@
   /* ---- guardado en Google ---- */
   const URL_GUARDAR = 'https://script.google.com/macros/s/AKfycbyRceaPgxD-dQsuH7CSl9SsJXcq-s2ELrczVdZtGykH2Cu-MfiEAvT0lWlQCnLuW68z/exec';            // direccion del receptor (termina en /exec). Vacia = solo WhatsApp
   const CLAVE = 'dominion-zc-2026';   // la misma de Codigo.gs
-  const VERSION = '2026-10-21';
+  const VERSION = '2026-10-22';
   let ultimoId = null;
 
   /* ---- tecnico (se guarda en el celular) ---- */
@@ -647,7 +647,7 @@
       st.img = im; st.fotoHora = cuando;
       st.fotoVieja = (Date.now() - cuando.getTime()) > FOTO_MAX_MIN * 60000;
       $('fotoVieja').hidden = !st.fotoVieja;
-      $('fotoTxt').textContent = 'Cambiar foto'; estampar(); revisar(); guardarFotoBorrador();
+      $('fotoTxt').textContent = '✓ Foto lista · tocar para cambiarla'; estampar(); revisar(); guardarFotoBorrador();
     };
     im.onerror = function(){ $('fotoTxt').textContent = 'No se pudo leer la foto, toma otra'; };
     im.src = url;
@@ -664,9 +664,14 @@
   /* camara dentro de la pagina */
   const cam = document.createElement('div');
   cam.id = 'camIn'; cam.hidden = true;
-  cam.innerHTML = '<video id="camVid" autoplay playsinline muted></video>'
+  /* (22-10-2026) Video de Marco Perez: tocaba el CENTRO de la imagen (como en
+     otras apps) y no el circulo blanco, asi que nunca salia la foto. Ahora:
+     tocar la imagen TAMBIEN saca la foto, el boton dice "SACAR FOTO" y hay un
+     aviso arriba. Al sacarla, un destello y "Foto lista". */
+  cam.innerHTML = '<div class="cam-aviso">👆 Toca la pantalla o el botón <b>SACAR FOTO</b></div>'
+    + '<video id="camVid" autoplay playsinline muted></video><div id="camFlash"></div>'
     + '<div class="cam-bar"><button type="button" id="camNo">Cancelar</button>'
-    + '<button type="button" id="camDisp" aria-label="Sacar foto"></button>'
+    + '<button type="button" id="camDisp" aria-label="Sacar foto"><span></span>SACAR FOTO</button>'
     + '<button type="button" id="camGal">Usar cámara del teléfono</button></div>';
   document.body.appendChild(cam);
   const css = document.createElement('style');
@@ -674,15 +679,32 @@
     + '#camIn[hidden]{display:none}#camVid{flex:1;width:100%;object-fit:contain;background:#000}'
     + '.cam-bar{display:flex;align-items:center;justify-content:space-between;padding:16px 18px 26px;gap:10px}'
     + '.cam-bar button{background:none;border:0;color:#fff;font:inherit;font-size:14px;max-width:34%}'
-    + '#camDisp{width:72px;height:72px;border-radius:50%;background:#fff;border:5px solid #94a3b8;flex:none;max-width:none}'
-    + '#camDisp:active{transform:scale(.94)}';
+    + '#camDisp{display:flex;flex-direction:column;align-items:center;gap:6px;flex:none;max-width:none;font-weight:800;font-size:13px;letter-spacing:.04em}'
+    + '#camDisp span{display:block;width:78px;height:78px;border-radius:50%;background:#fff;border:6px solid #22c55e;box-shadow:0 0 0 3px #fff}'
+    + '#camDisp:active span{transform:scale(.92)}'
+    + '.cam-aviso{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:2;background:rgba(15,23,42,.8);color:#fff;'
+    +   'padding:8px 14px;border-radius:999px;font-size:14px;white-space:nowrap;pointer-events:none}'
+    + '#camIn{position:fixed}#camVid{cursor:pointer}'
+    + '#camFlash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;transition:opacity .25s}#camFlash.on{opacity:.85;transition:none}';
   document.head.appendChild(css);
   let flujo = null;
   function camCerrar(){
     if(flujo){ flujo.getTracks().forEach(function(t){ t.stop(); }); flujo = null; }
     $('camVid').srcObject = null; cam.hidden = true;
   }
-  function camTelefono(){ camCerrar(); $('fotoIn').click(); }
+  /* (22-10-2026) si vuelve de la camara del telefono SIN foto (toco atras),
+     se le dice que la foto no llego, en vez de dejar solo "Falta: foto" */
+  let telAntes = null, telEsperando = false;
+  function camTelefono(){ camCerrar(); telAntes = st.img; telEsperando = true; $('fotoIn').click(); }
+  document.addEventListener('visibilitychange', function(){
+    if(document.hidden || !telEsperando) return;
+    setTimeout(function(){
+      if(!telEsperando) return;
+      telEsperando = false;
+      if(st.img === telAntes) $('fotoTxt').textContent = 'No llegó la foto. Toca aquí y saca la foto con el botón SACAR FOTO';
+    }, 2500);
+  });
+  $('fotoIn').addEventListener('change', function(){ telEsperando = false; });
   /* Si la camara de la pagina no se puede usar, el boton vuelve a abrir la
      camara del telefono como antes (el navegador no deja abrirla sola
      despues de una espera: por eso se pide tocar de nuevo). */
@@ -703,14 +725,32 @@
   });
   $('camNo').addEventListener('click', camCerrar);
   $('camGal').addEventListener('click', camTelefono);
-  $('camDisp').addEventListener('click', function(){
-    const v = $('camVid'); if(!v.videoWidth) return;
+  /* sacar la foto: con el boton o tocando la imagen. Si la camara todavia no
+     entrega imagen, espera hasta 3 s en vez de no hacer nada. */
+  let disparando = false;
+  function disparar(){
+    if(disparando) return;
+    const v = $('camVid');
+    if(!v.videoWidth){
+      disparando = true; let n = 0;
+      const t = setInterval(function(){ n++;
+        if(v.videoWidth || n > 30){ clearInterval(t); disparando = false; if(v.videoWidth) disparar(); }
+      }, 100);
+      return;
+    }
+    disparando = true;
+    const f = $('camFlash'); f.classList.add('on'); setTimeout(function(){ f.classList.remove('on'); }, 60);
     const c = document.createElement('canvas'); c.width = v.videoWidth; c.height = v.videoHeight;
     c.getContext('2d').drawImage(v, 0, 0);
     const cuando = new Date();
-    camCerrar();
-    ponerFoto(c.toDataURL('image/jpeg', 0.92), cuando);
-  });
+    setTimeout(function(){
+      camCerrar(); disparando = false;
+      ponerFoto(c.toDataURL('image/jpeg', 0.92), cuando);
+      $('fotoTxt').textContent = '✓ Foto lista · tocar para cambiarla';
+    }, 250);
+  }
+  $('camDisp').addEventListener('click', disparar);
+  $('camVid').addEventListener('click', disparar);
 
   /* al enviar o al empezar uno nuevo, el borrador se borra */
   const _listo = mostrarListo;
