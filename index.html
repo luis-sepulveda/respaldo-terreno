@@ -1,0 +1,801 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0f2a4a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Respaldo en terreno</title>
+<!--
+  RESPALDO EN TERRENO (14-10-2026) — app para tecnicos Dominion.
+  El tecnico registra una visita no realizada (Sin moradores, Cliente reagenda,
+  Cliente desiste) con foto de la casa. La app estampa SOBRE la foto la causa,
+  la OT, el tecnico, la fecha/hora y el GPS, y la envia por WhatsApp (boton
+  Enviar = menu Compartir del celular). No guarda nada en ningun servidor:
+  el respaldo queda en el WhatsApp de quien la recibe.
+  Necesita https (GitHub Pages) para usar el GPS y el boton Compartir.
+  GUARDADO EN GOOGLE (14-10-2026, 16:00): si URL_GUARDAR tiene la direccion
+  del receptor (Apps Script, archivo google/Codigo.gs), cada respaldo se
+  guarda ademas en Drive (foto) y en una planilla (fila). Primero queda en una
+  cola dentro del celular: si no hay senal se sube solo cuando vuelve.
+  COMENTARIO (27-10-2026): hasta 300 caracteres (antes 200), con contador, y
+  en la foto sale completo en varias lineas (antes se cortaba a 78).
+  MAL DERIVADA y TICKET (15-10-2026, pedido de los supervisores): cuarta causa
+  "Mal derivada" (la plataforma de VTR/CLARO cerro la orden con otra causa:
+  el tecnico marca que paso de verdad y como la cerro la plataforma) y casilla
+  "N° de ticket de la plataforma" en todas las causas (obligatoria solo en Mal
+  derivada). El ticket va estampado, en el WhatsApp y al receptor (campo ticket). El ticket es alfanumerico: teclado normal.
+  OTRAS CAUSAS (15-10-2026, para registrar las no factibles): quinta causa
+  (codigo OC, gris) con lista de motivos; "Otro" obliga a escribir el comentario.
+  Opcional en el link: ?wa=56912345678 -> numero del encargado para el plan B
+  (cuando el celular no deja compartir la foto directo).
+-->
+<style>
+  /* Una sola columna pensada para el celular, botones grandes para usar con el
+     sol encima y con una mano. */
+  :root {
+    --bg: #eef2f6; --card: #ffffff; --fg: #0f1d2e; --muted: #5b6b7d; --line: #d5dee8;
+    --brand: #0f2a4a; --accent: #1d4ed8;
+    --sm: #b45309; --sm-bg: #fff4e5;      /* sin moradores */
+    --re: #1d4ed8; --re-bg: #e8f0fe;      /* cliente reagenda */
+    --de: #b91c1c; --de-bg: #fde8e8;      /* cliente desiste */
+    --md: #7c3aed; --md-bg: #f1eafe;      /* mal derivada (15-10-2026) */
+    --oc: #475569; --oc-bg: #eef1f5;      /* otras causas / no factibles (15-10-2026) */
+    --ok: #15803d; --ok-bg: #e7f6ec; --warn: #b45309; --warn-bg: #fff4e5;
+    --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0b1420; --card: #132131; --fg: #e8eef5; --muted: #9db0c3; --line: #263a50;
+      --brand: #0a1d33; --accent: #6ea0ff;
+      --sm: #f5a524; --sm-bg: #33240d; --re: #8fb3ff; --re-bg: #142a4d; --de: #ff8a8a; --de-bg: #3a1616; --md: #b794ff; --md-bg: #2a1b47; --oc: #a3b1c2; --oc-bg: #1e2a38;
+      --ok: #4ade80; --ok-bg: #12301d; --warn: #f5a524; --warn-bg: #33240d; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0b1420; --card: #132131; --fg: #e8eef5; --muted: #9db0c3; --line: #263a50;
+    --brand: #0a1d33; --accent: #6ea0ff;
+    --sm: #f5a524; --sm-bg: #33240d; --re: #8fb3ff; --re-bg: #142a4d; --de: #ff8a8a; --de-bg: #3a1616; --md: #b794ff; --md-bg: #2a1b47; --oc: #a3b1c2; --oc-bg: #1e2a38;
+    --ok: #4ade80; --ok-bg: #12301d; --warn: #f5a524; --warn-bg: #33240d; color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { margin: 0; }
+  body { background: var(--bg); color: var(--fg); font: 16px/1.4 var(--font); -webkit-text-size-adjust: 100%; }
+  header { background: var(--brand); color: #fff; padding-top: env(safe-area-inset-top, 0px); }
+  header .in { max-width: 560px; margin: 0 auto; padding-block: 14px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+    display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  header h1 { margin: 0; font-size: 19px; letter-spacing: .01em; }
+  header small { display: block; opacity: .75; font-size: 12.5px; font-weight: 400; }
+  header button { background: rgba(255,255,255,.12); color: #fff; border: 1px solid rgba(255,255,255,.3);
+    border-radius: 999px; padding: 7px 12px; font: 600 13px var(--font); max-width: 52%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  main { max-width: 560px; margin: 0 auto; padding-block: 14px 40px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+    display: flex; flex-direction: column; gap: 12px; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px; }
+  .paso { display: flex; align-items: baseline; gap: 8px; margin: 0 0 10px; font-size: 13px; font-weight: 700;
+    letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  .paso b { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%;
+    background: var(--brand); color: #fff; font-size: 12px; letter-spacing: 0; }
+  label.l { display: block; font-size: 14px; color: var(--muted); margin: 0 0 6px; }
+  input[type=text], input[type=date], select, textarea {
+    width: 100%; font: 18px var(--font); padding: 12px; border: 1.5px solid var(--line); border-radius: 10px;
+    background: var(--bg); color: var(--fg); }
+  input#ot { font-size: 22px; font-weight: 700; letter-spacing: .04em; font-variant-numeric: tabular-nums; text-transform: uppercase; }
+  input:focus, select:focus, textarea:focus, button:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; }
+  textarea { min-height: 70px; resize: vertical; font-size: 16px; }
+  .err { color: var(--de); font-size: 14px; margin: 6px 0 0; }
+  .causas { display: grid; gap: 8px; }
+  .causas button { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
+    padding: 14px; border-radius: 12px; border: 2px solid var(--line); background: var(--card); color: var(--fg); font: 700 18px var(--font); }
+  .causas button i { width: 14px; height: 14px; border-radius: 50%; flex: none; font-style: normal; }
+  .causas button small { display: block; font-weight: 400; font-size: 13px; color: var(--muted); }
+  .causas button[data-c=SM] i { background: var(--sm); } .causas button[data-c=SM][aria-pressed=true] { border-color: var(--sm); background: var(--sm-bg); }
+  .causas button[data-c=RE] i { background: var(--re); } .causas button[data-c=RE][aria-pressed=true] { border-color: var(--re); background: var(--re-bg); }
+  .causas button[data-c=DE] i { background: var(--de); } .causas button[data-c=DE][aria-pressed=true] { border-color: var(--de); background: var(--de-bg); }
+  .causas button[data-c=OC] i { background: var(--oc); } .causas button[data-c=OC][aria-pressed=true] { border-color: var(--oc); background: var(--oc-bg); }
+  .causas button[data-c=MD] i { background: var(--md); } .causas button[data-c=MD][aria-pressed=true] { border-color: var(--md); background: var(--md-bg); }
+  .extra { display: grid; gap: 10px; margin-top: 12px; }
+  .si-no { display: flex; gap: 8px; }
+  .si-no button { flex: 1; padding: 12px; border-radius: 10px; border: 2px solid var(--line); background: var(--card); color: var(--fg); font: 600 16px var(--font); }
+  .si-no button[aria-pressed=true] { border-color: var(--accent); background: var(--re-bg); }
+  /* MAL DERIVADA y TICKET (15-10-2026) */
+  .opc { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .opc button { padding: 11px 8px; border-radius: 10px; border: 2px solid var(--line); background: var(--card); color: var(--fg); font: 600 15px var(--font); }
+  .opc button[aria-pressed=true] { border-color: var(--md); background: var(--md-bg); }
+  .ticket { border: 2px dashed var(--line); border-radius: 12px; padding: 10px 12px 12px; }
+  .ticket.oblig { border-color: var(--md); }
+  .ticket .marca { font-size: 12px; font-weight: 700; border-radius: 6px; padding: 1px 7px; margin-left: 6px; background: var(--bg); color: var(--muted); }
+  .ticket.oblig .marca { background: var(--md); color: #fff; }
+  .foto-btn { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; padding: 18px; border-radius: 12px;
+    border: 2px dashed var(--accent); background: var(--re-bg); color: var(--accent); font: 700 18px var(--font); cursor: pointer; }
+  .foto-btn svg { width: 26px; height: 26px; }
+  #fotoIn { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+  #prev { display: block; width: 100%; border-radius: 10px; margin-top: 10px; background: #000; }
+  .estado { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; font-size: 15px; }
+  .estado.ok { background: var(--ok-bg); color: var(--ok); }
+  .estado.warn { background: var(--warn-bg); color: var(--warn); }
+  .estado.busca { background: var(--bg); color: var(--muted); }
+  .estado button { margin-left: auto; padding: 6px 12px; border-radius: 999px; border: 1px solid currentColor; background: transparent; color: inherit; font: 600 13px var(--font); }
+  .enviar { position: sticky; bottom: 0; padding-block: 10px calc(10px + env(safe-area-inset-bottom, 0px)); background: linear-gradient(transparent, var(--bg) 30%); }
+  #btnEnviar { width: 100%; padding: 18px; border: 0; border-radius: 14px; background: #1f8f4e; color: #fff; font: 800 20px var(--font);
+    display: flex; align-items: center; justify-content: center; gap: 10px; }
+  #btnEnviar:disabled { background: var(--line); color: var(--muted); }
+  #btnEnviar svg { width: 24px; height: 24px; }
+  .falta { font-size: 13.5px; color: var(--muted); text-align: center; margin: 6px 0 0; }
+  .nube { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 10px; font-size: 14.5px; }
+  .nube.ok { background: var(--ok-bg); color: var(--ok); }
+  .nube.pend { background: var(--warn-bg); color: var(--warn); }
+  .nube.pend button { margin-left: auto; padding: 6px 12px; border-radius: 999px; border: 1px solid currentColor; background: transparent; color: inherit; font: 600 13px var(--font); }
+  .ok-box { text-align: center; }
+  .ok-box h2 { margin: 6px 0; color: var(--ok); }
+  .ok-box p { color: var(--muted); margin: 0 0 12px; }
+  .btn2 { width: 100%; padding: 14px; border-radius: 12px; border: 2px solid var(--line); background: var(--card); color: var(--fg); font: 700 17px var(--font); }
+  .btn2.pri { background: var(--brand); color: #fff; border-color: var(--brand); }
+  .planb { display: grid; gap: 8px; text-align: left; }
+  .planb ol { margin: 0; padding-left: 20px; color: var(--fg); }
+  .nota { font-size: 12.5px; color: var(--muted); text-align: center; margin: 4px 0 0; }
+  #dlgTec { position: fixed; inset: 0; background: rgba(5,12,22,.6); display: grid; place-items: center; padding: 16px; z-index: 10; }
+  #dlgTec .box { background: var(--card); border-radius: 16px; padding: 18px; width: min(420px, 100%); display: grid; gap: 10px; }
+  #dlgTec h2 { margin: 0; font-size: 19px; }
+  #dlgTec p { margin: 0; color: var(--muted); font-size: 14px; }
+</style>
+</head>
+<body>
+<header><div class="in">
+  <h1>Respaldo en terreno<small>Dominion · visita no realizada</small></h1>
+  <button id="btnTec" type="button" title="Cambiar técnico">Técnico</button>
+</div></header>
+
+<main id="form">
+  <div class="nube pend" id="pendBar" hidden><span id="pendTxt"></span><button type="button" id="pendBtn">Subir ahora</button></div>
+  <section>
+    <div class="paso"><b>1</b> Orden de trabajo</div>
+    <label class="l" for="ot">Número de OT (como sale en TOA)</label>
+    <input id="ot" type="text" inputmode="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="1-3XXXXXXX" value="1-">
+    <p class="err" id="otErr" hidden>Revisa la OT: debe ser como 1-3XXXXXXX.</p>
+  </section>
+
+  <section>
+    <div class="paso"><b>2</b> Qué pasó</div>
+    <div class="causas" id="causas">
+      <button type="button" data-c="SM" aria-pressed="false"><i></i><span>Sin moradores<small>No hay nadie en la casa</small></span></button>
+      <button type="button" data-c="RE" aria-pressed="false"><i></i><span>Cliente reagenda<small>Pide otro día u hora</small></span></button>
+      <button type="button" data-c="DE" aria-pressed="false"><i></i><span>Cliente desiste<small>Ya no quiere el trabajo</small></span></button>
+      <button type="button" data-c="MD" aria-pressed="false"><i></i><span>Mal derivada<small>La plataforma la cerró con otra causa</small></span></button>
+      <button type="button" data-c="OC" aria-pressed="false"><i></i><span>Otras causas<small>No factible u otro motivo</small></span></button>
+    </div>
+    <div class="extra" id="exSM" hidden>
+      <span class="l">¿Llamaste al cliente?</span>
+      <div class="si-no" id="llamo">
+        <button type="button" data-v="Llamó, no contesta" aria-pressed="false">Sí, no contesta</button>
+        <button type="button" data-v="Sin teléfono / no se pudo llamar" aria-pressed="false">No se pudo</button>
+      </div>
+    </div>
+    <div class="extra" id="exRE" hidden>
+      <div><label class="l" for="reFecha">Nueva fecha que pidió</label><input id="reFecha" type="date"></div>
+      <div><label class="l" for="reFranja">Franja</label>
+        <select id="reFranja"><option value="">Sin franja</option><option>10-13</option><option>13-16</option><option>16-19</option></select></div>
+    </div>
+    <div class="extra" id="exDE" hidden>
+      <div><label class="l" for="deMotivo">Motivo</label>
+        <select id="deMotivo"><option value="">Elige un motivo</option><option>No quiere el servicio</option><option>Ya tiene otro proveedor</option><option>Por el precio</option><option>No pidió el trabajo</option><option>Otro</option></select></div>
+    </div>
+    <div class="extra" id="exOC" hidden>
+      <div><label class="l" for="ocMotivo">Motivo</label>
+        <select id="ocMotivo"><option value="">Elige un motivo</option><option>Ductos tapados</option><option>Sin apoyo vivienda / Pierrack</option><option>Sin apoyo de poste</option><option>Dirección incorrecta</option><option>NAP sin puertos / sin facilidades</option><option>Acometida fuera de norma</option><option>Sin acceso a cámara</option><option>Otro</option></select></div>
+      <p class="err" id="ocErr" hidden>Con "Otro", escribe el motivo en el comentario.</p>
+    </div>
+    <div class="extra" id="exMD" hidden>
+      <span class="l">Qué pasó de verdad</span>
+      <div class="opc" id="mdReal">
+        <button type="button" data-v="Sin moradores" aria-pressed="false">Sin moradores</button>
+        <button type="button" data-v="Cliente reagenda" aria-pressed="false">Cliente reagenda</button>
+        <button type="button" data-v="Cliente desiste" aria-pressed="false">Cliente desiste</button>
+        <button type="button" data-v="Otra causa" aria-pressed="false">Otra causa</button>
+      </div>
+      <span class="l">Cómo la cerró la plataforma</span>
+      <div class="opc" id="mdPlat">
+        <button type="button" data-v="Sin moradores" aria-pressed="false">Sin moradores</button>
+        <button type="button" data-v="Cliente reagenda" aria-pressed="false">Cliente reagenda</button>
+        <button type="button" data-v="Cliente desiste" aria-pressed="false">Cliente desiste</button>
+        <button type="button" data-v="Otra causa" aria-pressed="false">Otra causa</button>
+      </div>
+      <p class="err" id="mdErr" hidden>Si la plataforma la cerró igual a lo que pasó, no es mal derivada.</p>
+    </div>
+    <div class="extra"><div class="ticket" id="tkBox">
+      <label class="l" for="tk">N° de ticket de la plataforma<span class="marca" id="tkMarca">opcional</span></label>
+      <input id="tk" type="text" inputmode="text" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" maxlength="30" placeholder="Letras y números, como te lo dio la plataforma">
+    </div></div>
+    <div class="extra"><div><label class="l" for="obs">Comentario (opcional)</label><textarea id="obs" maxlength="300" placeholder="Ej: casa con reja cerrada, se tocó timbre 3 veces"></textarea><p class="nota" id="obsCont" style="text-align:right">0 / 300</p></div></div>
+  </section>
+
+  <section>
+    <div class="paso"><b>3</b> Foto de la casa</div>
+    <label class="foto-btn" for="fotoIn" id="fotoLbl">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8a2 2 0 0 1 2-2h2l2-2h6l2 2h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="4"/></svg>
+      <span id="fotoTxt">Tomar foto</span>
+    </label>
+    <input id="fotoIn" type="file" accept="image/*" capture="environment">
+    <p class="nota">Fachada y número de la casa. Que no salgan personas.</p>
+    <canvas id="prev" hidden></canvas>
+    <div class="estado warn" id="fotoVieja" hidden style="margin-top:10px">⚠ Esta foto no es de recién. Saca una nueva en el lugar.</div>
+  </section>
+
+  <section>
+    <div class="paso"><b>4</b> Ubicación</div>
+    <div class="estado busca" id="gps"><span id="gpsTxt">Buscando ubicación…</span><button type="button" id="gpsBtn" hidden>Reintentar</button></div>
+  </section>
+
+  <div class="enviar">
+    <button id="btnEnviar" type="button" disabled>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg>
+      Enviar respaldo
+    </button>
+    <p class="falta" id="falta">Falta: OT, qué pasó y foto</p>
+  </div>
+</main>
+
+<main id="listo" hidden>
+  <section class="ok-box">
+    <svg viewBox="0 0 24 24" width="54" height="54" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--ok)"><circle cx="12" cy="12" r="10"/><path d="m7 12 3.5 3.5L17 9"/></svg>
+    <h2 id="listoTit">Respaldo listo</h2>
+    <p id="listoTxt">Revisa en WhatsApp que el mensaje haya salido.</p>
+    <div class="nube" id="nubeListo" hidden style="margin:0 0 12px"></div>
+    <div class="planb" id="planB" hidden>
+      <ol>
+        <li>Toca <b>Guardar foto</b>.</li>
+        <li>Toca <b>Abrir WhatsApp</b> y envía la foto guardada con el texto.</li>
+      </ol>
+      <button class="btn2" type="button" id="btnGuardar">Guardar foto</button>
+      <a class="btn2" id="btnWa" href="#" target="_blank" rel="noopener" style="display:block;text-align:center;text-decoration:none">Abrir WhatsApp</a>
+    </div>
+    <div style="display:grid;gap:8px;margin-top:12px">
+      <button class="btn2" type="button" id="btnReenviar">Enviar de nuevo</button>
+      <button class="btn2 pri" type="button" id="btnNuevo">Nuevo respaldo</button>
+    </div>
+  </section>
+</main>
+
+<div id="dlgTec" hidden>
+  <div class="box">
+    <h2>¿Quién eres?</h2>
+    <p>Tu nombre sale en cada foto. Se guarda en este celular, se escribe una sola vez.</p>
+    <input id="tecIn" type="text" autocomplete="name" placeholder="Nombre y apellido">
+    <button class="btn2 pri" type="button" id="tecOk">Guardar</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+  const $ = function(id){ return document.getElementById(id); };
+  const CAUSAS = { SM: 'SIN MORADORES', RE: 'CLIENTE REAGENDA', DE: 'CLIENTE DESISTE', MD: 'MAL DERIVADA', OC: 'OTRAS CAUSAS' };
+  const COLOR = { SM: '#d97706', RE: '#2563eb', DE: '#dc2626', MD: '#7c3aed', OC: '#94a3b8' };   // OC mas claro: sobre la franja oscura el gris oscuro no se ve
+  const FOTO_MAX_MIN = 15;          // una foto mas vieja que esto se marca como "no es de recien"
+  const LADO_MAX = 1600;            // la foto se achica a este lado mayor para que pese poco
+  const st = { causa: null, llamo: '', real: '', plat: '', img: null, fotoHora: null, fotoVieja: false, pos: null, blob: null, texto: '' };
+  const wa = (new URLSearchParams(location.search).get('wa') || '').replace(/\D/g, '');
+
+  /* ---- guardado en Google ---- */
+  const URL_GUARDAR = 'https://script.google.com/macros/s/AKfycbyRceaPgxD-dQsuH7CSl9SsJXcq-s2ELrczVdZtGykH2Cu-MfiEAvT0lWlQCnLuW68z/exec';            // direccion del receptor (termina en /exec). Vacia = solo WhatsApp
+  const CLAVE = 'dominion-zc-2026';   // la misma de Codigo.gs
+  const VERSION = '2026-10-22';
+  let ultimoId = null;
+
+  /* ---- tecnico (se guarda en el celular) ---- */
+  function leerTec(){ try { return localStorage.getItem('rt_tecnico') || ''; } catch(e){ return ''; } }
+  function guardarTec(v){ try { localStorage.setItem('rt_tecnico', v); } catch(e){} }
+  let tecnico = leerTec();
+  function pintarTec(){ $('btnTec').textContent = tecnico || 'Técnico'; }
+  function pedirTec(){ $('tecIn').value = tecnico; $('dlgTec').hidden = false; setTimeout(function(){ $('tecIn').focus(); }, 50); }
+  $('btnTec').addEventListener('click', pedirTec);
+  $('tecOk').addEventListener('click', function(){
+    const v = $('tecIn').value.trim().replace(/\s+/g, ' ');
+    if(v.length < 3){ $('tecIn').focus(); return; }
+    tecnico = v; guardarTec(v); pintarTec(); $('dlgTec').hidden = true; revisar();
+  });
+  pintarTec(); if(!tecnico) pedirTec();
+
+  /* ---- OT ---- */
+  function otLimpia(){ return $('ot').value.toUpperCase().replace(/\s/g, ''); }
+  function otOk(){ return /^1-[0-9A-Z]{6,10}$/.test(otLimpia()); }
+  $('ot').addEventListener('input', function(){ $('otErr').hidden = true; revisar(); });
+  $('ot').addEventListener('blur', function(){ const v = otLimpia(); $('ot').value = v; if(v.length > 2 && !otOk()) $('otErr').hidden = false; });
+
+  /* ---- causa ---- */
+  $('causas').addEventListener('click', function(e){
+    const b = e.target.closest('button'); if(!b) return;
+    st.causa = b.dataset.c;
+    Array.prototype.forEach.call($('causas').children, function(x){ x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
+    $('exSM').hidden = st.causa !== 'SM'; $('exRE').hidden = st.causa !== 'RE'; $('exDE').hidden = st.causa !== 'DE';
+    $('exMD').hidden = st.causa !== 'MD'; $('exOC').hidden = st.causa !== 'OC';
+    pintarTicket(); if(st.img) estampar(); revisar();
+  });
+  /* MAL DERIVADA (15-10-2026): que paso de verdad y como la cerro la plataforma */
+  [['mdReal', 'real'], ['mdPlat', 'plat']].forEach(function(par){
+    $(par[0]).addEventListener('click', function(e){
+      const b = e.target.closest('button'); if(!b) return;
+      st[par[1]] = b.dataset.v;
+      Array.prototype.forEach.call($(par[0]).children, function(x){ x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
+      $('mdErr').hidden = !(st.real && st.plat && st.real === st.plat);
+      if(st.img) estampar(); revisar();
+    });
+  });
+  /* TICKET (15-10-2026): obligatorio solo en Mal derivada */
+  /* el ticket es alfanumerico (15-10-2026): se guarda en mayusculas, sin espacios de mas */
+  function ticket(){ return $('tk').value.trim().replace(/\s+/g, ' ').toUpperCase(); }
+  function pintarTicket(){
+    const ob = st.causa === 'MD';
+    $('tkBox').classList.toggle('oblig', ob); $('tkMarca').textContent = ob ? 'obligatorio' : 'opcional';
+  }
+  $('tk').addEventListener('input', revisar);
+  $('tk').addEventListener('change', function(){ if(st.img) estampar(); revisar(); });
+  $('llamo').addEventListener('click', function(e){
+    const b = e.target.closest('button'); if(!b) return;
+    st.llamo = b.dataset.v;
+    Array.prototype.forEach.call($('llamo').children, function(x){ x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
+    if(st.img) estampar();
+  });
+  $('obs').addEventListener('input', revisar);   /* con "Otro" el comentario es obligatorio */
+  /* (27-10-2026) contador de caracteres del comentario (maximo 300) */
+  function pintarCont(){ $('obsCont').textContent = $('obs').value.length + ' / 300'; }
+  $('obs').addEventListener('input', pintarCont);
+  ['reFecha', 'reFranja', 'deMotivo', 'ocMotivo', 'obs'].forEach(function(id){ $(id).addEventListener('change', function(){ if(st.img) estampar(); revisar(); }); });
+
+  /* ---- GPS ---- */
+  let gpsWatch = null;
+  function gpsPintar(clase, txt, reintentar){
+    $('gps').className = 'estado ' + clase; $('gpsTxt').textContent = txt; $('gpsBtn').hidden = !reintentar;
+  }
+  function gpsIniciar(){
+    if(!('geolocation' in navigator)){ gpsPintar('warn', 'Este celular no entrega ubicación.', false); return; }
+    gpsPintar('busca', 'Buscando ubicación…', false);
+    if(gpsWatch !== null) navigator.geolocation.clearWatch(gpsWatch);
+    gpsWatch = navigator.geolocation.watchPosition(function(p){
+      const c = p.coords;
+      if(!st.pos || c.accuracy <= st.pos.acc || Date.now() - st.pos.t > 60000)
+        st.pos = { lat: c.latitude, lng: c.longitude, acc: Math.round(c.accuracy), t: Date.now() };
+      gpsPintar(st.pos.acc <= 50 ? 'ok' : 'warn', (st.pos.acc <= 50 ? '✓ Ubicación lista' : 'Ubicación poco precisa') + ' · ±' + st.pos.acc + ' m', st.pos.acc > 50);
+      if(st.img) estampar(); revisar();
+    }, function(err){
+      gpsPintar('warn', err.code === 1 ? 'Sin permiso de ubicación. Actívalo para este sitio y reintenta.' : 'No se pudo obtener la ubicación. Sal al exterior y reintenta.', true);
+      revisar();
+    }, { enableHighAccuracy: true, maximumAge: 15000, timeout: 30000 });
+  }
+  $('gpsBtn').addEventListener('click', gpsIniciar);
+  gpsIniciar();
+
+  /* ---- foto ---- */
+  $('fotoIn').addEventListener('change', function(){
+    const f = this.files && this.files[0]; if(!f) return;
+    const ahora = Date.now();
+    st.fotoHora = f.lastModified ? new Date(f.lastModified) : new Date(ahora);
+    st.fotoVieja = f.lastModified ? (ahora - f.lastModified) > FOTO_MAX_MIN * 60000 : false;
+    $('fotoVieja').hidden = !st.fotoVieja;
+    const url = URL.createObjectURL(f), im = new Image();
+    im.onload = function(){ st.img = im; $('fotoTxt').textContent = 'Cambiar foto'; estampar(); revisar(); };
+    im.onerror = function(){ URL.revokeObjectURL(url); $('fotoTxt').textContent = 'No se pudo leer la foto, toma otra'; };
+    im.src = url;
+    this.value = '';
+  });
+
+  function dosD(n){ return String(n).padStart(2, '0'); }
+  function fecha(d){ return dosD(d.getDate()) + '-' + dosD(d.getMonth() + 1) + '-' + d.getFullYear(); }
+  function hora(d){ return dosD(d.getHours()) + ':' + dosD(d.getMinutes()); }
+  function detalle(){
+    if(st.causa === 'SM') return st.llamo;
+    if(st.causa === 'RE'){ const f = $('reFecha').value, fr = $('reFranja').value;
+      return f ? 'Nueva fecha ' + f.split('-').reverse().join('-') + (fr ? ' ' + fr : '') : (fr ? 'Franja ' + fr : ''); }
+    if(st.causa === 'DE') return $('deMotivo').value;
+    if(st.causa === 'OC') return $('ocMotivo').value;
+    if(st.causa === 'MD') return (st.real || st.plat) ? 'Real: ' + (st.real || '—') + ' · Plataforma: ' + (st.plat || '—') : '';
+    return '';
+  }
+
+  /* dibuja la foto y le pega la franja con los datos */
+  function estampar(){
+    const im = st.img, cv = $('prev');
+    const k = Math.min(1, LADO_MAX / Math.max(im.naturalWidth, im.naturalHeight));
+    const W = Math.round(im.naturalWidth * k), H = Math.round(im.naturalHeight * k);
+    cv.width = W; cv.height = H;
+    const g = cv.getContext('2d');
+    g.drawImage(im, 0, 0, W, H);
+    const u = Math.max(W, H) / 1000;           // unidad de tamano
+    const fs = Math.round(26 * u), fsG = Math.round(36 * u), pad = Math.round(18 * u), lh = Math.round(fs * 1.35);
+    const ahora = new Date(), p = st.pos, det = detalle(), obs = $('obs').value.trim();
+    const lineas = [];
+    lineas.push('OT ' + (otOk() ? otLimpia() : '—') + '   ·   ' + (tecnico || 'Técnico sin nombre'));
+    lineas.push(fecha(ahora) + ' ' + hora(ahora) + (st.fotoVieja ? '   ·   ⚠ foto de las ' + hora(st.fotoHora) : ''));
+    lineas.push(p ? 'GPS ' + p.lat.toFixed(6) + ', ' + p.lng.toFixed(6) + '  (±' + p.acc + ' m)' : 'GPS sin ubicación');
+    if(ticket()) lineas.push('Ticket plataforma: ' + ticket());
+    /* en Mal derivada van en dos lineas: en una foto vertical no caben en una */
+    if(st.causa === 'MD' && det){ lineas.push('Real: ' + (st.real || '—')); lineas.push('Plataforma: ' + (st.plat || '—')); }
+    else if(det) lineas.push(det);
+    /* (27-10-2026) el comentario sale COMPLETO en la foto, partido en varias
+       lineas segun el ancho (antes se cortaba a 78 caracteres con "…") */
+    if(obs){
+      g.font = '500 ' + fs + 'px system-ui, -apple-system, Roboto, Arial, sans-serif';
+      const anchoLinea = W - pad * 2 - 10 * u;
+      let actual = '';
+      obs.split(/\s+/).forEach(function(pal){
+        const prueba = actual ? actual + ' ' + pal : pal;
+        if(actual && g.measureText(prueba).width > anchoLinea){ lineas.push(actual); actual = pal; }
+        else actual = prueba;
+      });
+      if(actual) lineas.push(actual);
+    }
+    /* la marca va al lado de la causa; si no cabe (foto vertical), va en una linea propia al final */
+    const marca = 'Dominion · respaldo de visita', fsM = Math.round(fs * .8);
+    g.font = '800 ' + fsG + 'px system-ui, -apple-system, Roboto, Arial, sans-serif';
+    const anchoTit = g.measureText(st.causa ? CAUSAS[st.causa] : 'ELIGE QUÉ PASÓ').width;
+    g.font = '600 ' + fsM + 'px system-ui, -apple-system, Roboto, Arial, sans-serif';
+    const anchoMarca = g.measureText(marca).width;
+    const marcaAparte = pad + 10 * u + anchoTit + 24 * u + anchoMarca > W - pad;
+    const altoBanda = pad * 2 + fsG * 1.25 + lineas.length * lh + (marcaAparte ? fsM * 1.3 : 0);
+    g.fillStyle = 'rgba(8,15,26,.78)'; g.fillRect(0, H - altoBanda, W, altoBanda);
+    g.fillStyle = st.causa ? COLOR[st.causa] : '#64748b'; g.fillRect(0, H - altoBanda, Math.round(10 * u), altoBanda);
+    g.textBaseline = 'top';
+    let y = H - altoBanda + pad;
+    g.font = '800 ' + fsG + 'px system-ui, -apple-system, Roboto, Arial, sans-serif';
+    g.fillStyle = '#ffffff'; g.fillText(st.causa ? CAUSAS[st.causa] : 'ELIGE QUÉ PASÓ', pad + 10 * u, y);
+    if(!marcaAparte){
+      g.font = '600 ' + fsM + 'px system-ui, -apple-system, Roboto, Arial, sans-serif'; g.fillStyle = 'rgba(255,255,255,.7)';
+      g.fillText(marca, W - pad - anchoMarca, y + (fsG - fsM) / 2);
+    }
+    y += fsG * 1.25;
+    g.font = '500 ' + fs + 'px system-ui, -apple-system, Roboto, Arial, sans-serif'; g.fillStyle = '#ffffff';
+    lineas.forEach(function(t){ g.fillText(t, pad + 10 * u, y, W - pad * 2 - 10 * u); y += lh; });
+    if(marcaAparte){
+      g.font = '600 ' + fsM + 'px system-ui, -apple-system, Roboto, Arial, sans-serif'; g.fillStyle = 'rgba(255,255,255,.7)';
+      g.fillText(marca, pad + 10 * u, y + fsM * .15, W - pad * 2 - 10 * u);
+    }
+    cv.hidden = false;
+    st.texto = textoMensaje(ahora);
+    st.blob = null;
+    cv.toBlob(function(b){ st.blob = b; revisar(); }, 'image/jpeg', 0.82);
+  }
+
+  function textoMensaje(ahora){
+    const p = st.pos, det = detalle(), obs = $('obs').value.trim();
+    return '*' + (st.causa ? CAUSAS[st.causa] : '') + '* · OT ' + otLimpia() + '\n'
+      + 'Técnico: ' + (tecnico || '—') + '\n'
+      + 'Fecha: ' + fecha(ahora) + ' ' + hora(ahora) + (st.fotoVieja ? ' (foto de las ' + hora(st.fotoHora) + ')' : '') + '\n'
+      + (det ? det + '\n' : '')
+      + (ticket() ? 'Ticket plataforma: ' + ticket() + '\n' : '')
+      + (obs ? 'Comentario: ' + obs + '\n' : '')
+      + (p ? 'Ubicación (±' + p.acc + ' m): https://maps.google.com/?q=' + p.lat.toFixed(6) + ',' + p.lng.toFixed(6) : 'Ubicación: no disponible');
+  }
+
+  /* ---- cola en el celular (IndexedDB) y subida a Google ---- */
+  let dbP = null;
+  function db(){
+    if(!dbP) dbP = new Promise(function(ok, mal){
+      const r = indexedDB.open('respaldo-terreno', 1);
+      r.onupgradeneeded = function(){ r.result.createObjectStore('cola', { keyPath: 'id' }); };
+      r.onsuccess = function(){ ok(r.result); }; r.onerror = function(){ mal(r.error); };
+    });
+    return dbP;
+  }
+  function tx(modo, fn){
+    return db().then(function(d){ return new Promise(function(ok, mal){
+      const t = d.transaction('cola', modo), out = fn(t.objectStore('cola'));
+      t.oncomplete = function(){ ok(out && out.result); }; t.onerror = function(){ mal(t.error); };
+    }); });
+  }
+  function colaPoner(r){ return tx('readwrite', function(s){ s.put(r); }); }
+  function colaBorrar(id){ return tx('readwrite', function(s){ s.delete(id); }); }
+  function colaTodos(){ return tx('readonly', function(s){ return s.getAll(); }); }
+  function nuevoId(){
+    try { if(crypto.randomUUID) return crypto.randomUUID(); } catch(e){}
+    return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+  }
+  function aBase64(blob){
+    return new Promise(function(ok, mal){ const f = new FileReader(); f.onload = function(){ ok(f.result); }; f.onerror = mal; f.readAsDataURL(blob); });
+  }
+  let subiendo = false;
+  async function sincronizar(){
+    if(!URL_GUARDAR || subiendo) return pintarPend();
+    subiendo = true;
+    try {
+      const cola = (await colaTodos()) || [];
+      for(const r of cola){
+        if(!navigator.onLine) break;
+        try {
+          const resp = await fetch(URL_GUARDAR, { method: 'POST', body: JSON.stringify(r), redirect: 'follow' });
+          const j = await resp.json();
+          if(j && j.ok) await colaBorrar(r.id);
+          else if(j && j.error === 'clave') break;
+        } catch(e){ break; }   // sin senal o Google no respondio: se reintenta despues
+      }
+    } catch(e){}
+    subiendo = false;
+    return pintarPend();
+  }
+  async function pintarPend(){
+    if(!URL_GUARDAR){ $('pendBar').hidden = true; return; }
+    let cola = [];
+    try { cola = (await colaTodos()) || []; } catch(e){}
+    const n = cola.length;
+    $('pendBar').hidden = n === 0;
+    $('pendTxt').textContent = n === 1 ? '1 respaldo guardado en el celular, falta subirlo' : n + ' respaldos guardados en el celular, falta subirlos';
+    const nl = $('nubeListo');
+    if(ultimoId){
+      const pend = cola.some(function(r){ return r.id === ultimoId; });
+      nl.hidden = false;
+      nl.className = 'nube ' + (pend ? 'pend' : 'ok');
+      nl.textContent = pend ? 'Guardado en el celular. Se sube solo cuando haya señal.' : '✓ Guardado en la carpeta de respaldos';
+    }
+  }
+  $('pendBtn').addEventListener('click', sincronizar);
+  window.addEventListener('online', sincronizar);
+  setInterval(sincronizar, 60000);
+  sincronizar();
+
+  /* ---- que falta / enviar ---- */
+  function faltan(){
+    const f = [];
+    if(!tecnico) f.push('tu nombre');
+    if(!otOk()) f.push('OT');
+    if(!st.causa) f.push('qué pasó');
+    else if(st.causa === 'DE' && !$('deMotivo').value) f.push('motivo');
+    else if(st.causa === 'OC'){
+      if(!$('ocMotivo').value) f.push('motivo');
+      else if($('ocMotivo').value === 'Otro' && !$('obs').value.trim()) f.push('comentario con el motivo');
+    }
+    else if(st.causa === 'MD'){
+      if(!st.real || !st.plat) f.push('qué pasó y cómo la cerró la plataforma');
+      else if(st.real === st.plat) f.push('las dos causas son iguales');
+      if(!ticket()) f.push('N° de ticket');
+    }
+    if(!st.img) f.push('foto');
+    return f;
+  }
+  function revisar(){
+    const f = faltan();
+    $('ocErr').hidden = !(st.causa === 'OC' && $('ocMotivo').value === 'Otro' && !$('obs').value.trim());
+    /* no se desactiva mientras se arma la foto: enviar() espera a que este lista
+       (si no, tocar Enviar justo despues de escribir el comentario no hacia nada) */
+    $('btnEnviar').disabled = f.length > 0;
+    $('falta').textContent = f.length ? 'Falta: ' + f.join(', ') : (!st.pos ? 'Sin ubicación todavía: se enviará sin GPS si no aparece.' : 'Todo listo. Elige WhatsApp y el encargado.');
+  }
+  function nombreArchivo(){ return 'respaldo_' + otLimpia() + '_' + (st.causa || '') + '.jpg'; }
+  async function enviar(){
+    estampar();                               // hora y GPS al momento de enviar
+    await new Promise(function(r){ const t = setInterval(function(){ if(st.blob){ clearInterval(t); r(); } }, 50); });
+    if(URL_GUARDAR){
+      try {
+        const p = st.pos;
+        const r = { id: nuevoId(), clave: CLAVE, version: VERSION, fecha: new Date().toISOString(),
+          tecnico: tecnico, ot: otLimpia(), causa: st.causa, detalle: detalle(), ticket: ticket(),
+          causaReal: st.causa === 'MD' ? st.real : '', causaPlataforma: st.causa === 'MD' ? st.plat : '', comentario: $('obs').value.trim(),
+          lat: p ? p.lat : null, lng: p ? p.lng : null, acc: p ? p.acc : null,
+          fotoVieja: st.fotoVieja, fotoHora: st.fotoVieja ? hora(st.fotoHora) : '', foto: await aBase64(st.blob) };
+        await colaPoner(r); ultimoId = r.id;
+      } catch(e){ ultimoId = null; }
+    }
+    const file = new File([st.blob], nombreArchivo(), { type: 'image/jpeg' });
+    const data = { files: [file], text: st.texto, title: 'Respaldo OT ' + otLimpia() };
+    if(navigator.canShare && navigator.canShare({ files: [file] })){
+      try { await navigator.share(data); mostrarListo(false); sincronizar(); return; }
+      catch(e){ if(e && e.name === 'AbortError'){ if(ultimoId){ mostrarListo(false, true); sincronizar(); } return; } }
+    }
+    mostrarListo(true); sincronizar();
+  }
+  $('btnEnviar').addEventListener('click', enviar);
+
+  function mostrarListo(planB, sinWsp){
+    $('form').hidden = true; $('listo').hidden = false; window.scrollTo(0, 0);
+    $('planB').hidden = !planB;
+    $('listoTit').textContent = planB ? 'Envíalo en 2 pasos' : sinWsp ? 'Respaldo guardado' : 'Respaldo enviado';
+    $('listoTxt').textContent = planB ? 'Este celular no deja mandar la foto directo.' : sinWsp ? 'No se mandó por WhatsApp. Toca "Enviar de nuevo" si quieres mandarlo.' : 'Revisa en WhatsApp que el mensaje haya salido.';
+    $('nubeListo').hidden = true; pintarPend();
+    $('btnWa').href = (wa ? 'https://wa.me/' + wa : 'https://wa.me/') + '?text=' + encodeURIComponent(st.texto);
+  }
+  $('btnGuardar').addEventListener('click', function(){
+    const a = document.createElement('a'); a.href = URL.createObjectURL(st.blob); a.download = nombreArchivo();
+    document.body.appendChild(a); a.click(); a.remove();
+  });
+  $('btnReenviar').addEventListener('click', async function(){
+    /* reenviar solo por WhatsApp: el respaldo ya quedo guardado una vez */
+    const file = new File([st.blob], nombreArchivo(), { type: 'image/jpeg' });
+    if(navigator.canShare && navigator.canShare({ files: [file] })){
+      try { await navigator.share({ files: [file], text: st.texto }); mostrarListo(false); return; } catch(e){ if(e && e.name === 'AbortError') return; }
+    }
+    mostrarListo(true);
+  });
+  $('btnNuevo').addEventListener('click', function(){
+    st.causa = null; st.llamo = ''; st.real = ''; st.plat = ''; st.img = null; st.blob = null; st.fotoVieja = false;
+    $('ot').value = '1-'; $('obs').value = ''; $('obsCont').textContent = '0 / 300'; $('reFecha').value = ''; $('reFranja').value = ''; $('deMotivo').value = ''; $('ocMotivo').value = ''; $('tk').value = '';
+    $('mdErr').hidden = true; pintarTicket();
+    document.querySelectorAll('[aria-pressed=true]').forEach(function(b){ b.setAttribute('aria-pressed', 'false'); });
+    ['exSM', 'exRE', 'exDE', 'exMD', 'exOC'].forEach(function(id){ $(id).hidden = true; });
+    $('prev').hidden = true; $('fotoVieja').hidden = true; $('fotoTxt').textContent = 'Tomar foto';
+    ultimoId = null;
+    $('listo').hidden = true; $('form').hidden = false; window.scrollTo(0, 0); revisar(); pintarPend();
+  });
+
+  /* ===================================================================
+     CAMARA DENTRO DE LA PAGINA + BORRADOR (21-10-2026)
+     Caso real (21-10, un técnico): al tocar "Tomar foto" se abria la
+     app de camara del telefono; al volver con "Aceptar", Android ya habia
+     cerrado la pestana de Chrome para liberar memoria y la pagina partia
+     de cero: sin OT, sin causa y sin foto. Dos arreglos:
+     1) La camara se abre DENTRO de la pagina (getUserMedia): no se sale de
+        Chrome, asi que no hay nada que cerrar. Si el telefono no lo permite
+        (permiso negado, navegador antiguo), se usa la camara de siempre.
+     2) Todo lo escrito se guarda en el telefono mientras se llena (borrador,
+        3 horas) y vuelve solo si la pagina se recarga. Se borra al enviar.
+     =================================================================== */
+  const KB = 'rt_borrador', KBF = 'rt_borrador_foto', BORR_MAX_MIN = 180;
+  let restaurando = false;
+  function guardarBorrador(){
+    if(restaurando) return;
+    try {
+      localStorage.setItem(KB, JSON.stringify({ t: Date.now(), ot: $('ot').value, causa: st.causa,
+        llamo: st.llamo, real: st.real, plat: st.plat, tk: $('tk').value, obs: $('obs').value,
+        reFecha: $('reFecha').value, reFranja: $('reFranja').value,
+        deMotivo: $('deMotivo').value, ocMotivo: $('ocMotivo').value }));
+    } catch(e){}
+  }
+  function guardarFotoBorrador(){
+    try {
+      if(!st.img){ localStorage.removeItem(KBF); return; }
+      const im = st.img, k = Math.min(1, 1280 / Math.max(im.naturalWidth, im.naturalHeight));
+      const c = document.createElement('canvas');
+      c.width = Math.round(im.naturalWidth * k); c.height = Math.round(im.naturalHeight * k);
+      c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
+      localStorage.setItem(KBF, JSON.stringify({ u: c.toDataURL('image/jpeg', 0.8),
+        h: st.fotoHora ? st.fotoHora.getTime() : Date.now() }));
+    } catch(e){}
+  }
+  function borrarBorrador(){ try { localStorage.removeItem(KB); localStorage.removeItem(KBF); } catch(e){} }
+  let tBorr = null;
+  function guardarLuego(){ clearTimeout(tBorr); tBorr = setTimeout(guardarBorrador, 300); }
+  $('form').addEventListener('input', guardarLuego);
+  $('form').addEventListener('change', guardarLuego);
+  $('form').addEventListener('click', function(){ setTimeout(guardarBorrador, 0); });
+
+  /* foto: una sola entrada para las dos vias (camara de la pagina o del telefono) */
+  function ponerFoto(url, cuando){
+    const im = new Image();
+    im.onload = function(){
+      st.img = im; st.fotoHora = cuando;
+      st.fotoVieja = (Date.now() - cuando.getTime()) > FOTO_MAX_MIN * 60000;
+      $('fotoVieja').hidden = !st.fotoVieja;
+      $('fotoTxt').textContent = '✓ Foto lista · tocar para cambiarla'; estampar(); revisar(); guardarFotoBorrador();
+    };
+    im.onerror = function(){ $('fotoTxt').textContent = 'No se pudo leer la foto, toma otra'; };
+    im.src = url;
+  }
+  /* la foto de la camara del telefono tambien queda en el borrador */
+  $('fotoIn').addEventListener('change', function(){
+    const antes = st.img; let n = 0;
+    const t = setInterval(function(){ n++;
+      if(st.img && st.img !== antes){ clearInterval(t); guardarFotoBorrador(); }
+      else if(n > 40) clearInterval(t);
+    }, 250);
+  });
+
+  /* camara dentro de la pagina */
+  const cam = document.createElement('div');
+  cam.id = 'camIn'; cam.hidden = true;
+  /* (22-10-2026) Video de un técnico: tocaba el CENTRO de la imagen (como en
+     otras apps) y no el circulo blanco, asi que nunca salia la foto. Ahora:
+     tocar la imagen TAMBIEN saca la foto, el boton dice "SACAR FOTO" y hay un
+     aviso arriba. Al sacarla, un destello y "Foto lista". */
+  cam.innerHTML = '<div class="cam-aviso">👆 Toca la pantalla o el botón <b>SACAR FOTO</b></div>'
+    + '<video id="camVid" autoplay playsinline muted></video><div id="camFlash"></div>'
+    + '<div class="cam-bar"><button type="button" id="camNo">Cancelar</button>'
+    + '<button type="button" id="camDisp" aria-label="Sacar foto"><span></span>SACAR FOTO</button>'
+    + '<button type="button" id="camGal">Usar cámara del teléfono</button></div>';
+  document.body.appendChild(cam);
+  const css = document.createElement('style');
+  css.textContent = '#camIn{position:fixed;inset:0;z-index:9999;background:#000;display:flex;flex-direction:column}'
+    + '#camIn[hidden]{display:none}#camVid{flex:1;width:100%;object-fit:contain;background:#000}'
+    + '.cam-bar{display:flex;align-items:center;justify-content:space-between;padding:16px 18px 26px;gap:10px}'
+    + '.cam-bar button{background:none;border:0;color:#fff;font:inherit;font-size:14px;max-width:34%}'
+    + '#camDisp{display:flex;flex-direction:column;align-items:center;gap:6px;flex:none;max-width:none;font-weight:800;font-size:13px;letter-spacing:.04em}'
+    + '#camDisp span{display:block;width:78px;height:78px;border-radius:50%;background:#fff;border:6px solid #22c55e;box-shadow:0 0 0 3px #fff}'
+    + '#camDisp:active span{transform:scale(.92)}'
+    + '.cam-aviso{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:2;background:rgba(15,23,42,.8);color:#fff;'
+    +   'padding:8px 14px;border-radius:999px;font-size:14px;white-space:nowrap;pointer-events:none}'
+    + '#camIn{position:fixed}#camVid{cursor:pointer}'
+    + '#camFlash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;transition:opacity .25s}#camFlash.on{opacity:.85;transition:none}';
+  document.head.appendChild(css);
+  let flujo = null;
+  function camCerrar(){
+    if(flujo){ flujo.getTracks().forEach(function(t){ t.stop(); }); flujo = null; }
+    $('camVid').srcObject = null; cam.hidden = true;
+  }
+  /* (22-10-2026) si vuelve de la camara del telefono SIN foto (toco atras),
+     se le dice que la foto no llego, en vez de dejar solo "Falta: foto" */
+  let telAntes = null, telEsperando = false;
+  function camTelefono(){ camCerrar(); telAntes = st.img; telEsperando = true; $('fotoIn').click(); }
+  document.addEventListener('visibilitychange', function(){
+    if(document.hidden || !telEsperando) return;
+    setTimeout(function(){
+      if(!telEsperando) return;
+      telEsperando = false;
+      if(st.img === telAntes) $('fotoTxt').textContent = 'No llegó la foto. Toca aquí y saca la foto con el botón SACAR FOTO';
+    }, 2500);
+  });
+  $('fotoIn').addEventListener('change', function(){ telEsperando = false; });
+  /* Si la camara de la pagina no se puede usar, el boton vuelve a abrir la
+     camara del telefono como antes (el navegador no deja abrirla sola
+     despues de una espera: por eso se pide tocar de nuevo). */
+  let usarTelefono = !(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  async function camAbrir(){
+    try {
+      flujo = await navigator.mediaDevices.getUserMedia({ audio: false,
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } } });
+      $('camVid').srcObject = flujo; cam.hidden = false;
+    } catch(e){
+      camCerrar(); usarTelefono = true;
+      $('fotoTxt').textContent = 'Toca de nuevo para abrir la cámara';
+    }
+  }
+  $('fotoLbl').addEventListener('click', function(e){
+    if(usarTelefono) return;          // deja que el label abra la camara del telefono
+    e.preventDefault(); camAbrir();
+  });
+  $('camNo').addEventListener('click', camCerrar);
+  $('camGal').addEventListener('click', camTelefono);
+  /* sacar la foto: con el boton o tocando la imagen. Si la camara todavia no
+     entrega imagen, espera hasta 3 s en vez de no hacer nada. */
+  let disparando = false;
+  function disparar(){
+    if(disparando) return;
+    const v = $('camVid');
+    if(!v.videoWidth){
+      disparando = true; let n = 0;
+      const t = setInterval(function(){ n++;
+        if(v.videoWidth || n > 30){ clearInterval(t); disparando = false; if(v.videoWidth) disparar(); }
+      }, 100);
+      return;
+    }
+    disparando = true;
+    const f = $('camFlash'); f.classList.add('on'); setTimeout(function(){ f.classList.remove('on'); }, 60);
+    const c = document.createElement('canvas'); c.width = v.videoWidth; c.height = v.videoHeight;
+    c.getContext('2d').drawImage(v, 0, 0);
+    const cuando = new Date();
+    setTimeout(function(){
+      camCerrar(); disparando = false;
+      ponerFoto(c.toDataURL('image/jpeg', 0.92), cuando);
+      $('fotoTxt').textContent = '✓ Foto lista · tocar para cambiarla';
+    }, 250);
+  }
+  $('camDisp').addEventListener('click', disparar);
+  $('camVid').addEventListener('click', disparar);
+
+  /* al enviar o al empezar uno nuevo, el borrador se borra */
+  const _listo = mostrarListo;
+  mostrarListo = function(a, b){ borrarBorrador(); return _listo(a, b); };
+  $('btnNuevo').addEventListener('click', borrarBorrador);
+
+  /* si la pagina se recargo con algo a medio llenar, se recupera */
+  (function recuperar(){
+    let d = null, f = null;
+    try { d = JSON.parse(localStorage.getItem(KB) || 'null'); f = JSON.parse(localStorage.getItem(KBF) || 'null'); } catch(e){}
+    if(!d || !d.t || (Date.now() - d.t) > BORR_MAX_MIN * 60000){ borrarBorrador(); return; }
+    restaurando = true;
+    try {
+      if(d.ot) $('ot').value = d.ot;
+      ['tk', 'obs', 'reFecha', 'reFranja', 'deMotivo', 'ocMotivo'].forEach(function(id){ if(d[id]) $(id).value = d[id]; });
+      if(d.causa){ const b = $('causas').querySelector('[data-c="' + d.causa + '"]'); if(b) b.click(); }
+      [['llamo', d.llamo], ['mdReal', d.real], ['mdPlat', d.plat]].forEach(function(p){
+        if(!p[1]) return;
+        Array.prototype.forEach.call($(p[0]).children, function(b){ if(b.dataset.v === p[1]) b.click(); });
+      });
+    } catch(e){}
+    restaurando = false;
+    try { $('obsCont').textContent = $('obs').value.length + ' / 300'; } catch(e){}
+    if(f && f.u) ponerFoto(f.u, new Date(f.h || Date.now()));
+    revisar();
+  })();
+  revisar();
+})();
+</script>
+</body>
+</html>
